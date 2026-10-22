@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">catmirror</string>
+    <string name="accessibility_service_label">catmirror Servicio de Control Táctil</string>
+    <string name="accessibility_service_description">Permite a catmirror inyectar toques y gestos en pantalla recibidos desde el dispositivo receptor para control remoto.</string>
+    <string name="notification_channel_name">catmirror Transmisión</string>
+    <string name="notification_channel_desc">Notificaciones del servicio de transmisión de pantalla en tiempo real</string>
+    <string name="notification_streaming_title">catmirror activo</string>
+    <string name="notification_streaming_text">Transmitiendo pantalla en tiempo real…</string>
+</resources>

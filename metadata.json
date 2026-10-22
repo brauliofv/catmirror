@@ -1,0 +1,6 @@
+{
+  "name": "catmirror",
+  "description": "Transmisión de pantalla en tiempo real y control táctil remoto entre dispositivos Android vía Wi-Fi local y USB.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
