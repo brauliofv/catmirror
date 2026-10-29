@@ -58,6 +58,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.BuildConfig
 import com.example.model.AppScreen
 import com.example.model.NetworkInfo
 import com.example.ui.components.AccessibilityGuideDialog
@@ -453,7 +454,34 @@ fun HomeScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Version and Build identifier footer
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "catmirror v${BuildConfig.VERSION_NAME}",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        color = CatTextMuted,
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 0.5.sp
+                    ),
+                    modifier = Modifier.testTag("app_version_label")
+                )
+                Text(
+                    text = "Build: ${BuildConfig.BUILD_TIME} • Cod. ${BuildConfig.VERSION_CODE}",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        color = CatTextMuted.copy(alpha = 0.6f),
+                        fontSize = 10.sp
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
         }
     }
 

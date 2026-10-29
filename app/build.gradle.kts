@@ -1,4 +1,8 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 plugins {
   alias(libs.plugins.android.application)
@@ -16,8 +20,12 @@ android {
     applicationId = "com.braulio.catmirror"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = 2
+    val buildTimestamp = SimpleDateFormat("yy/MM/dd-HH:mm", Locale.US).apply {
+      timeZone = TimeZone.getTimeZone("UTC")
+    }.format(Date())
+    versionName = "1.1 ($buildTimestamp)"
+    buildConfigField("String", "BUILD_TIME", "\"$buildTimestamp\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
