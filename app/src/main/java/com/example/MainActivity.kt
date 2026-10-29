@@ -32,6 +32,7 @@ import com.example.viewmodel.MainViewModel
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.example.util.AppLogger.initCrashHandler(applicationContext)
         enableEdgeToEdge()
         setContent {
             CatMirrorTheme(darkTheme = true) {

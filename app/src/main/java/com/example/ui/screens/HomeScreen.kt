@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AppScreen
 import com.example.model.NetworkInfo
+import com.example.ui.components.AccessibilityGuideDialog
 import com.example.ui.components.CatMirrorHeader
 import com.example.ui.components.LogViewerBottomSheet
 import com.example.ui.theme.CatAmberDark
@@ -84,6 +85,7 @@ fun HomeScreen(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     var showLogViewer by remember { mutableStateOf(false) }
+    var showAccessibilityGuideDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         onRefreshNetwork()
@@ -190,9 +192,7 @@ fun HomeScreen(
                     .padding(vertical = 4.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .clickable {
-                        try {
-                            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                        } catch (_: Exception) {}
+                        showAccessibilityGuideDialog = true
                     }
                     .testTag("accessibility_banner"),
                 color = if (isAccessibilityEnabled) CatSlateCard else Color(0xFF2C1919),
@@ -462,6 +462,12 @@ fun HomeScreen(
             networkInfo = networkInfo,
             isAccessibilityEnabled = isAccessibilityEnabled,
             onDismiss = { showLogViewer = false }
+        )
+    }
+
+    if (showAccessibilityGuideDialog) {
+        AccessibilityGuideDialog(
+            onDismiss = { showAccessibilityGuideDialog = false }
         )
     }
 }

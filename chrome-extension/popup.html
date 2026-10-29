@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>catmirror</title>
+  <style>
+    body {
+      width: 280px;
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #0F141C;
+      color: #F8FAFC;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .title {
+      font-size: 16px;
+      font-weight: bold;
+      color: #FF9E2C;
+    }
+    .field {
+      margin-bottom: 12px;
+    }
+    label {
+      display: block;
+      font-size: 11px;
+      color: #94A3B8;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    input {
+      width: 100%;
+      box-sizing: border-box;
+      background: #182230;
+      border: 1px solid rgba(0, 229, 255, 0.4);
+      color: #FFF;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    input:focus {
+      outline: none;
+      border-color: #00E5FF;
+    }
+    button {
+      width: 100%;
+      background: #FF9E2C;
+      color: #0F141C;
+      font-weight: bold;
+      border: none;
+      padding: 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #FFBE76;
+    }
+    .shortcuts {
+      margin-top: 10px;
+      display: flex;
+      gap: 6px;
+    }
+    .chip {
+      background: #222F42;
+      color: #00E5FF;
+      font-size: 10px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span style="font-size: 22px;">🐱</span>
+    <span class="title">catmirror Remote</span>
+  </div>
+
+  <div class="field">
+    <label for="ip">IP del Teléfono (Emisor)</label>
+    <input type="text" id="ip" placeholder="Ej: 192.168.1.50" />
+    <div class="shortcuts">
+      <span class="chip" id="chip-local">127.0.0.1 (ADB)</span>
+      <span class="chip" id="chip-usb">192.168.42.129 (USB)</span>
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="pin">PIN de Seguridad (6 dígitos)</label>
+    <input type="text" id="pin" placeholder="PIN que aparece en la app" maxlength="6" />
+  </div>
+
+  <button id="open-btn">Abrir Control Remoto</button>
+
+  <script src="popup.js"></script>
+</body>
+</html>

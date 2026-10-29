@@ -50,6 +50,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.NetworkInfo
 import com.example.model.StreamStats
+import com.example.ui.components.AccessibilityGuideDialog
 import com.example.ui.components.PulseLiveIndicator
 import com.example.ui.components.QrCodeCanvas
 import com.example.ui.components.StatChip
@@ -91,6 +96,7 @@ fun EmitterScreen(
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    var showAccessibilityGuideDialog by remember { mutableStateOf(false) }
 
     BackHandler {
         onNavigateBack()
@@ -103,8 +109,8 @@ fun EmitterScreen(
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             onStartStreaming(result.resultCode, result.data)
         } else {
-            // Start simulated stream generator so user can preview even without device prompt
-            onStartStreaming(0, null)
+            com.example.util.AppLogger.w("EmitterScreen", "Permiso de captura de pantalla cancelado por el usuario o denegado por el sistema")
+            android.widget.Toast.makeText(context, "Se requiere autorizar la captura de pantalla para transmitir", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -192,16 +198,14 @@ fun EmitterScreen(
                         Spacer(modifier = Modifier.height(10.dp))
                         Button(
                             onClick = {
-                                try {
-                                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                                } catch (_: Exception) {}
+                                showAccessibilityGuideDialog = true
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = CatCoralRed),
                             shape = RoundedCornerShape(10.dp)
                         ) {
                             Icon(imageVector = Icons.Default.TouchApp, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Activar en Ajustes de Android", style = MaterialTheme.typography.labelMedium)
+                            Text("Cómo Activar en Android", style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
@@ -445,5 +449,11 @@ fun EmitterScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+
+    if (showAccessibilityGuideDialog) {
+        AccessibilityGuideDialog(
+            onDismiss = { showAccessibilityGuideDialog = false }
+        )
     }
 }

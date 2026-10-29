@@ -66,7 +66,24 @@ Instala el archivo `catmirror.apk` en los dos teléfonos.
 1. Abre **catmirror** y selecciona **Pantalla Emisor**.
 2. **Activar el Control Táctil (Primera vez):**
    * Toca el aviso de accesibilidad que te llevará a los Ajustes de Android.
-   * Ve a *Accesibilidad > Servicios instalados > catmirror Servicio de Control Táctil* y actívalo.
+   * Ve a *Accesibilidad > Aplicaciones instaladas (o Servicios instalados) > catmirror Servicio de Control Táctil* y actívalo.
+
+> [!WARNING]
+> ### ⚠️ Paso Obligatorio en Android 13, 14 y 15 (Samsung Galaxy S23, S24, Pixel, etc.): "Ajuste restringido"
+>
+> Si al intentar activar el servicio en Android 13 o superior te aparece **en gris oscuro** y muestra el mensaje **"Ajuste restringido: Por tu seguridad, este ajuste no está disponible actualmente"**, es una protección estándar de Android para cualquier APK instalado fuera de Google Play Store.
+>
+> **Cómo desbloquearlo en 30 segundos:**
+> 1. Ve a **Ajustes > Aplicaciones > catmirror** (o mantén presionado el icono de catmirror en tu pantalla de inicio y toca el icono ℹ️ *Info de la aplicación*).
+> 2. En la esquina superior derecha, toca el **menú de tres puntos ( ⋮ )**.
+> 3. Toca **"Permitir ajustes restringidos"** (*Allow restricted settings*) e introduce tu huella, patrón o PIN de bloqueo.
+> 4. Ahora regresa a **Ajustes > Accesibilidad > Aplicaciones instaladas > catmirror Servicio de Control Táctil** y ya podrás activar el interruptor normalmente.
+>
+> **Transparencia y Seguridad:**
+> * catmirror **NO** recopila pulsaciones de teclado ni contraseñas.
+> * El servicio de accesibilidad se utiliza **exclusivamente** para inyectar los toques y gestos recibidos desde el dispositivo receptor que tú autorices mediante el código PIN.
+> * Toda la comunicación ocurre **estrictamente en tu red local o cable USB**, sin servidores en la nube.
+
 3. Presiona **"Iniciar Transmisión de Pantalla"** y acepta el permiso del sistema (*MediaProjection*).
 4. Verás en pantalla el **código PIN de 6 dígitos** y la dirección IP local (ej. `192.168.1.45:8888`).
 
@@ -75,6 +92,29 @@ Instala el archivo `catmirror.apk` en los dos teléfonos.
 2. **Vía Wi-Fi:** En la pestaña *Detección Wi-Fi*, espera unos segundos a que aparezca el nombre del teléfono emisor, pulsa **"Conectar"** e introduce el PIN de 6 dígitos.
 3. **Vía Cable USB / Manual:** En la pestaña *Cable USB / Manual*, introduce la IP del emisor (o `127.0.0.1` si usas ADB) junto con el PIN y pulsa **"Conectar Ahora"**.
 4. ¡Listo! Verás la pantalla en tiempo real y podrás tocarla para interactuar con sus aplicaciones.
+
+---
+
+## 🌐 Control Remoto desde la PC (Navegador & Extensión Chrome)
+
+¡También puedes controlar la pantalla de tu teléfono desde tu computadora usando **Google Chrome**, **Edge** o **Brave**!
+
+### Método A: Directo en el navegador (Sin instalar nada)
+1. Con el modo **Pantalla Emisor** activo en tu teléfono, abre tu navegador en la PC.
+2. Ingresa la dirección IP de tu teléfono:
+   ```
+   http://192.168.1.XX:8888
+   ```
+   *(o `http://127.0.0.1:8888` si usas cable USB con ADB).*
+3. Escribe el PIN de 6 dígitos y haz clic con el ratón sobre la pantalla para hacer tap, scroll y usar los botones de Inicio, Atrás y Recientes.
+
+### Método B: Extensión para Google Chrome
+El proyecto incluye una extensión oficial en la carpeta `chrome-extension/`:
+1. Abre Google Chrome y ve a `chrome://extensions/`.
+2. Activa el interruptor **"Modo de desarrollador"** (en la esquina superior derecha).
+3. Haz clic en **"Cargar descomprimida"** (*Load unpacked*).
+4. Selecciona la carpeta `chrome-extension/` de este proyecto.
+5. Haz clic en el icono de **catmirror 🐱** en tu barra de extensiones de Chrome para abrir el visor interactivo en una ventana dedicada.
 
 ---
 

@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "catmirror — Control Remoto Android",
+  "version": "1.0",
+  "description": "Visualiza y controla tu dispositivo Android en tiempo real desde Google Chrome mediante Wi-Fi o cable USB.",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    },
+    "default_popup": "popup.html",
+    "default_title": "catmirror Web Remote"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ]
+}

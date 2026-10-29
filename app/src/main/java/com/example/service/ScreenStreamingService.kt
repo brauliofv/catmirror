@@ -29,6 +29,7 @@ import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.R
+import com.example.util.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -94,12 +95,13 @@ class ScreenStreamingService : Service() {
                     intent.getParcelableExtra(EXTRA_DATA)
                 }
 
-                startForegroundServiceNotification()
+                val hasValidConsent = (resultCode != 0 && resultData != null)
+                startForegroundServiceNotification(hasValidConsent)
 
-                if (resultCode != 0 && resultData != null) {
-                    startMediaProjection(resultCode, resultData)
+                if (hasValidConsent) {
+                    startMediaProjection(resultCode, resultData!!)
                 } else {
-                    Log.i(TAG, "No MediaProjection intent data provided; starting high-fidelity preview stream generator")
+                    AppLogger.i(TAG, "Iniciando simulador de streaming (sin token MediaProjection)")
                     startSimulatedStream()
                 }
             }
@@ -122,7 +124,7 @@ class ScreenStreamingService : Service() {
         }
     }
 
-    private fun startForegroundServiceNotification() {
+    private fun startForegroundServiceNotification(isRealMediaProjection: Boolean) {
         val stopIntent = Intent(this, ScreenStreamingService::class.java).apply {
             action = ACTION_STOP
         }
@@ -150,52 +152,69 @@ class ScreenStreamingService : Service() {
             .setOngoing(true)
             .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (isRealMediaProjection) {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                    )
+                } else {
+                    startForeground(NOTIFICATION_ID, notification)
+                }
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Error llamando a startForeground: ${e.message}", e)
         }
     }
 
     @SuppressLint("WrongConstant")
     private fun startMediaProjection(resultCode: Int, data: Intent) {
-        val mpManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
-        mediaProjection = mpManager?.getMediaProjection(resultCode, data)
+        try {
+            val mpManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
+            mediaProjection = mpManager?.getMediaProjection(resultCode, data)
 
-        if (mediaProjection == null) {
-            Log.e(TAG, "MediaProjection was null, falling back to simulated stream")
-            startSimulatedStream()
-            return
-        }
+            if (mediaProjection == null) {
+                AppLogger.e(TAG, "MediaProjection fue nulo; iniciando generador simulado")
+                startSimulatedStream()
+                return
+            }
 
-        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val metrics = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        windowManager.defaultDisplay.getRealMetrics(metrics)
+            // OBLIGATORIO EN ANDROID 14+ (API 34+): Debe registrarse un callback antes de createVirtualDisplay
+            mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+                override fun onStop() {
+                    AppLogger.i(TAG, "MediaProjection detenido por el sistema o usuario")
+                    stopStreaming()
+                }
+            }, backgroundHandler)
 
-        // Scale resolution to 720p max to optimize Wi-Fi latency
-        val scale = (720f / metrics.widthPixels).coerceAtMost(1f)
-        val targetWidth = (metrics.widthPixels * scale).toInt() / 2 * 2
-        val targetHeight = (metrics.heightPixels * scale).toInt() / 2 * 2
-        val densityDpi = (metrics.densityDpi * scale).toInt()
+            val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.getRealMetrics(metrics)
 
-        Log.i(TAG, "Capturing display at ${targetWidth}x${targetHeight} ($densityDpi dpi)")
+            // Scale resolution to 720p max to optimize Wi-Fi latency
+            val scale = (720f / metrics.widthPixels).coerceAtMost(1f)
+            val targetWidth = (metrics.widthPixels * scale).toInt() / 2 * 2
+            val targetHeight = (metrics.heightPixels * scale).toInt() / 2 * 2
+            val densityDpi = (metrics.densityDpi * scale).toInt()
 
-        imageReader = ImageReader.newInstance(targetWidth, targetHeight, PixelFormat.RGBA_8888, 2)
-        virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "CatMirrorDisplay",
-            targetWidth,
-            targetHeight,
-            densityDpi,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader?.surface,
-            null,
-            backgroundHandler
-        )
+            AppLogger.i(TAG, "Capturando pantalla real a ${targetWidth}x${targetHeight} ($densityDpi dpi)")
+
+            imageReader = ImageReader.newInstance(targetWidth, targetHeight, PixelFormat.RGBA_8888, 2)
+            virtualDisplay = mediaProjection?.createVirtualDisplay(
+                "CatMirrorDisplay",
+                targetWidth,
+                targetHeight,
+                densityDpi,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                imageReader?.surface,
+                null,
+                backgroundHandler
+            )
 
         imageReader?.setOnImageAvailableListener({ reader ->
             val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
@@ -237,7 +256,11 @@ class ScreenStreamingService : Service() {
         }, backgroundHandler)
 
         _isStreaming.value = true
+    } catch (e: Exception) {
+        AppLogger.e(TAG, "Fallo al iniciar MediaProjection: ${e.message}", e)
+        startSimulatedStream()
     }
+}
 
     private fun startSimulatedStream() {
         simulationJob?.cancel()
