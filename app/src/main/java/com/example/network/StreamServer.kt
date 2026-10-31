@@ -555,24 +555,26 @@ class StreamServer(
         header {
             width: 100%;
             background-color: #182230;
-            padding: 12px 24px;
+            padding: 10px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid rgba(255, 158, 44, 0.3);
             flex-wrap: wrap;
             gap: 10px;
+            z-index: 10;
         }
-        .logo { font-size: 18px; font-weight: bold; color: #FF9E2C; display: flex; align-items: center; gap: 8px; }
+        .logo { font-size: 17px; font-weight: bold; color: #FF9E2C; display: flex; align-items: center; gap: 8px; }
         .controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         input {
             background: #0F141C; border: 1px solid #00E5FF; color: white;
-            padding: 7px 12px; border-radius: 8px; font-size: 14px;
-            font-family: monospace; letter-spacing: 2px; width: 140px; text-align: center;
+            padding: 7px 10px; border-radius: 8px; font-size: 13px;
+            font-family: monospace; letter-spacing: 2px; width: 130px; text-align: center;
         }
         button {
             background: #FF9E2C; border: none; color: black; font-weight: bold;
-            padding: 8px 16px; border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 13px;
+            padding: 8px 14px; border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 13px;
+            display: inline-flex; align-items: center; gap: 4px;
         }
         button:hover { background: #FFBE76; }
         .btn-secondary {
@@ -581,45 +583,62 @@ class StreamServer(
         .btn-secondary:hover {
             background: #00E5FF; color: #000;
         }
+        .rot-pill {
+            background: #182230; color: #94A3B8; border: 1px solid #334155;
+            padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;
+        }
+        .rot-pill.active {
+            background: #00E5FF; color: #0F141C; font-weight: bold; border-color: #00E5FF;
+        }
         .viewport-wrapper {
             flex: 1;
             display: flex;
             justify-content: center;
             align-items: center;
             width: 100%;
-            height: calc(100vh - 140px);
+            height: calc(100vh - 145px);
             padding: 8px;
             overflow: hidden;
             position: relative;
         }
         .viewport-container {
             position: relative;
-            border: 2px solid rgba(0, 229, 255, 0.4);
-            border-radius: 18px; overflow: hidden; background: #000;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+            border: 2px solid rgba(0, 229, 255, 0.5);
+            border-radius: 18px;
+            overflow: hidden;
+            background: #000;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 20px rgba(0, 229, 255, 0.15);
             display: flex;
             justify-content: center;
             align-items: center;
-            transition: width 0.25s ease, height 0.25s ease;
             cursor: grab;
+            transition: width 0.25s ease, height 0.25s ease;
         }
         .viewport-container:active {
             cursor: grabbing;
         }
         #stream-img {
+            position: absolute;
+            left: 50%;
+            top: 50%;
             display: block;
             user-select: none;
             -webkit-user-drag: none;
-            pointer-events: auto;
-            transition: transform 0.25s ease;
+            pointer-events: none;
+            object-fit: fill;
+            transform-origin: center center;
+            transition: transform 0.25s ease, width 0.25s ease, height 0.25s ease;
         }
         .nav-bar {
-            margin-top: 4px; margin-bottom: 12px;
-            display: flex; gap: 14px; background: #182230; padding: 8px 22px;
+            margin-top: 4px; margin-bottom: 10px;
+            display: flex; gap: 10px; background: #182230; padding: 7px 18px;
             border-radius: 30px; border: 1px solid rgba(255, 158, 44, 0.4);
+            flex-wrap: wrap; justify-content: center; z-index: 10;
         }
-        .nav-btn { background: #222F42; color: #FF9E2C; padding: 8px 18px; border-radius: 20px; font-size: 14px; }
+        .nav-btn { background: #222F42; color: #FF9E2C; padding: 7px 15px; border-radius: 20px; font-size: 13px; }
         .nav-btn:hover { background: #FF9E2C; color: black; }
+        .nav-btn-scroll { background: #1B2E3D; color: #00E5FF; border: 1px solid rgba(0, 229, 255, 0.3); }
+        .nav-btn-scroll:hover { background: #00E5FF; color: black; }
         .ripple {
             position: absolute; border: 2px solid #00E5FF; border-radius: 50%;
             pointer-events: none; transform: translate(-50%, -50%);
@@ -627,7 +646,7 @@ class StreamServer(
         }
         @keyframes rip { from { width: 6px; height: 6px; opacity: 1; } to { width: 44px; height: 44px; opacity: 0; } }
         .status-msg {
-            font-size: 11px; color: #94A3B8; font-family: monospace; margin-bottom: 6px;
+            font-size: 11px; color: #94A3B8; font-family: monospace; margin-bottom: 4px; text-align: center;
         }
     </style>
 </head>
@@ -637,7 +656,16 @@ class StreamServer(
         <div class="controls">
             <input type="text" id="pin-input" placeholder="PIN 6 dígitos" maxlength="6" />
             <button id="connect-btn">Conectar</button>
-            <button class="btn-secondary" id="rotate-btn">↻ Rotar (0°)</button>
+            <div style="display: flex; gap: 4px; align-items: center; background: #0F141C; padding: 3px 6px; border-radius: 8px; border: 1px solid #334155;">
+                <span style="font-size: 11px; color: #94A3B8; margin-right: 4px;">Rotar:</span>
+                <button class="rot-pill" id="rot-left" title="Girar -90° izquierda">↶ -90°</button>
+                <button class="rot-pill" id="rot-right" title="Girar +90° derecha">↷ +90°</button>
+                <button class="rot-pill active" id="rot-0" onclick="setRotation(0)">0°</button>
+                <button class="rot-pill" id="rot-90" onclick="setRotation(90)">90°</button>
+                <button class="rot-pill" id="rot-180" onclick="setRotation(180)">180°</button>
+                <button class="rot-pill" id="rot-270" onclick="setRotation(270)">270°</button>
+            </div>
+            <button class="btn-secondary" id="fullscreen-btn" onclick="toggleFullscreen()" title="Pantalla completa">⛶ Pantalla Completa</button>
             <button class="btn-secondary" id="dim-btn" onclick="toggleDim()">🌙 Modo Ahorro</button>
         </div>
     </header>
@@ -654,6 +682,9 @@ class StreamServer(
         <button class="nav-btn" onclick="sendKey(1)">◀ Atrás</button>
         <button class="nav-btn" onclick="sendKey(2)">⚪ Inicio</button>
         <button class="nav-btn" onclick="sendKey(3)">▦ Recientes</button>
+        <span style="border-left: 1px solid rgba(255, 158, 44, 0.3); margin: 0 4px;"></span>
+        <button class="nav-btn nav-btn-scroll" onclick="scrollPhone('up')">⬆ Subir (Scroll)</button>
+        <button class="nav-btn nav-btn-scroll" onclick="scrollPhone('down')">⬇ Bajar (Scroll)</button>
     </div>
 
     <script>
@@ -662,40 +693,53 @@ class StreamServer(
         const stage = document.getElementById('stage') || document.querySelector('.viewport-wrapper');
         const pinInput = document.getElementById('pin-input');
         const connectBtn = document.getElementById('connect-btn');
-        const rotateBtn = document.getElementById('rotate-btn');
         const statusLabel = document.getElementById('status-label');
 
         let rotationAngle = 0;
 
         function updateLayout() {
             const stageW = (stage ? stage.clientWidth : window.innerWidth) - 24;
-            const stageH = (stage ? stage.clientHeight : (window.innerHeight - 140)) - 24;
+            const stageH = (stage ? stage.clientHeight : (window.innerHeight - 145)) - 24;
             if (stageW <= 0 || stageH <= 0) return;
 
             const natW = img.naturalWidth > 0 ? img.naturalWidth : 720;
             const natH = img.naturalHeight > 0 ? img.naturalHeight : 1560;
-            const portraitAspect = natW / natH;
+            const portraitAspect = natW / natH; // < 1 (e.g. 720/1560 = 0.4615)
 
             const isSideways = (rotationAngle === 90 || rotationAngle === 270);
 
+            let containerW, containerH;
             if (!isSideways) {
-                const frameH = Math.min(stageH, stageW / portraitAspect);
-                const frameW = frameH * portraitAspect;
-                viewport.style.width = Math.round(frameW) + 'px';
-                viewport.style.height = Math.round(frameH) + 'px';
-                img.style.width = Math.round(frameW) + 'px';
-                img.style.height = Math.round(frameH) + 'px';
+                // Modo Vertical (0° o 180°): relación natW / natH
+                containerH = Math.min(stageH, stageW / portraitAspect);
+                containerW = containerH * portraitAspect;
+
+                viewport.style.width = Math.round(containerW) + 'px';
+                viewport.style.height = Math.round(containerH) + 'px';
+
+                img.style.width = Math.round(containerW) + 'px';
+                img.style.height = Math.round(containerH) + 'px';
             } else {
+                // Modo Horizontal (90° o 270°): relación invertida natH / natW
                 const landscapeAspect = 1 / portraitAspect;
-                const frameW = Math.min(stageW, stageH * landscapeAspect);
-                const frameH = frameW / landscapeAspect;
-                viewport.style.width = Math.round(frameW) + 'px';
-                viewport.style.height = Math.round(frameH) + 'px';
-                img.style.width = Math.round(frameH) + 'px';
-                img.style.height = Math.round(frameW) + 'px';
+                containerW = Math.min(stageW, stageH * landscapeAspect);
+                containerH = containerW / landscapeAspect;
+
+                viewport.style.width = Math.round(containerW) + 'px';
+                viewport.style.height = Math.round(containerH) + 'px';
+
+                // CORRECCIÓN CLAVE: Al rotar 90° o 270°, el ancho visual horizontal es el ALTO del elemento img,
+                // y la altura visual vertical es el ANCHO del elemento img.
+                // Invertimos el tamaño del elemento para que llene el contenedor al 100% sin barras negras ni cortes:
+                img.style.width = Math.round(containerH) + 'px';
+                img.style.height = Math.round(containerW) + 'px';
             }
 
-            img.style.transform = 'rotate(' + rotationAngle + 'deg)';
+            img.style.position = 'absolute';
+            img.style.left = '50%';
+            img.style.top = '50%';
+            img.style.transform = 'translate(-50%, -50%) rotate(' + rotationAngle + 'deg)';
+            img.style.transformOrigin = 'center center';
         }
 
         img.addEventListener('load', updateLayout);
@@ -704,13 +748,27 @@ class StreamServer(
 
         function setRotation(deg) {
             rotationAngle = (deg % 360 + 360) % 360;
-            rotateBtn.textContent = '↻ Rotar (' + rotationAngle + '°)';
+            [0, 90, 180, 270].forEach(a => {
+                const pill = document.getElementById('rot-' + a);
+                if (pill) pill.classList.toggle('active', a === rotationAngle);
+            });
+            const names = { 0: 'Vertical (0°)', 90: 'Horizontal (90°)', 180: 'Invertido (180°)', 270: 'Horizontal Invertido (270°)' };
+            statusLabel.textContent = 'Rotación: ' + (names[rotationAngle] || rotationAngle + '°');
             updateLayout();
         }
 
-        rotateBtn.onclick = () => {
-            setRotation(rotationAngle + 90);
-        };
+        document.getElementById('rot-left').onclick = () => setRotation(rotationAngle - 90);
+        document.getElementById('rot-right').onclick = () => setRotation(rotationAngle + 90);
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+                document.exitFullscreen().catch(() => {});
+            }
+            setTimeout(updateLayout, 200);
+        }
+        document.addEventListener('fullscreenchange', () => setTimeout(updateLayout, 200));
 
         function connect() {
             const pin = pinInput.value.trim();
@@ -791,6 +849,16 @@ class StreamServer(
             }
         });
 
+        function scrollPhone(direction) {
+            const scrollDown = (direction === 'down');
+            statusLabel.textContent = scrollDown ? 'Desplazando hacia abajo (scroll down)...' : 'Desplazando hacia arriba (scroll up)...';
+            const startRelY = scrollDown ? 0.75 : 0.25;
+            const endRelY = scrollDown ? 0.25 : 0.75;
+            const startP = mapToPhone(0.5, startRelY);
+            const endP = mapToPhone(0.5, endRelY);
+            sendTouch(2, endP.x, endP.y, startP.x, startP.y, 250);
+        }
+
         // Mouse wheel scroll support with gesture throttling
         let isWheelScrolling = false;
         let wheelAccumulator = 0;
@@ -834,16 +902,12 @@ class StreamServer(
         // Keyboard navigation shortcuts
         window.addEventListener('keydown', (e) => {
             if (e.target.tagName === 'INPUT') return;
-            if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+            if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
                 e.preventDefault();
-                const startP = mapToPhone(0.5, 0.7);
-                const endP = mapToPhone(0.5, 0.3);
-                sendTouch(2, endP.x, endP.y, startP.x, startP.y, 220);
+                scrollPhone('down');
             } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
                 e.preventDefault();
-                const startP = mapToPhone(0.5, 0.3);
-                const endP = mapToPhone(0.5, 0.7);
-                sendTouch(2, endP.x, endP.y, startP.x, startP.y, 220);
+                scrollPhone('up');
             } else if (e.key === 'Escape') {
                 sendKey(1);
             }

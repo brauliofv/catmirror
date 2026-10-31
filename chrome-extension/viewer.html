@@ -78,37 +78,67 @@
       cursor: grabbing;
     }
     #screen-stream {
+      position: absolute;
+      left: 50%;
+      top: 50%;
       display: block;
       user-select: none;
       -webkit-user-drag: none;
-      pointer-events: auto;
-      transition: transform 0.25s ease;
+      pointer-events: none;
+      object-fit: fill;
+      transform-origin: center center;
+      transition: transform 0.25s ease, width 0.25s ease, height 0.25s ease;
     }
     .bottom-bar {
       height: 60px;
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 10px;
       background: #151C26;
-      padding: 0 24px;
+      padding: 0 20px;
       border-radius: 30px;
-      margin-bottom: 16px;
+      margin-bottom: 12px;
       border: 1px solid rgba(255, 158, 44, 0.4);
+      flex-wrap: wrap;
     }
     .nav-btn {
       background: #202B3B;
       color: #FF9E2C;
       font-weight: bold;
       border: none;
-      padding: 8px 16px;
+      padding: 7px 14px;
       border-radius: 12px;
       cursor: pointer;
-      font-size: 14px;
+      font-size: 13px;
       transition: all 0.2s;
     }
     .nav-btn:hover {
       background: #FF9E2C;
       color: #000;
+    }
+    .nav-btn-scroll {
+      background: #1B2E3D;
+      color: #00E5FF;
+      border: 1px solid rgba(0, 229, 255, 0.3);
+    }
+    .nav-btn-scroll:hover {
+      background: #00E5FF;
+      color: #000;
+    }
+    .rot-pill {
+      background: #182230;
+      color: #94A3B8;
+      border: 1px solid #334155;
+      padding: 5px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .rot-pill.active {
+      background: #00E5FF;
+      color: #0B0E14;
+      border-color: #00E5FF;
     }
     .ripple {
       position: absolute;
@@ -130,6 +160,15 @@
       <span>🐱</span>
       <span>catmirror Control Remoto</span>
     </div>
+    <div style="display: flex; gap: 4px; align-items: center; background: #0B0E14; padding: 3px 6px; border-radius: 8px; border: 1px solid #334155;">
+      <span style="font-size: 11px; color: #94A3B8;">Rotar:</span>
+      <button class="rot-pill" id="btn-rot-left" title="Girar -90° izquierda">↶ -90°</button>
+      <button class="rot-pill" id="btn-rot-right" title="Girar +90° derecha">↷ +90°</button>
+      <button class="rot-pill active" id="rot-0">0°</button>
+      <button class="rot-pill" id="rot-90">90°</button>
+      <button class="rot-pill" id="rot-180">180°</button>
+      <button class="rot-pill" id="rot-270">270°</button>
+    </div>
     <div class="status-pill">
       <div class="dot"></div>
       <span id="host-label">Conectando...</span>
@@ -142,13 +181,16 @@
     </div>
   </div>
 
-  <div style="font-size: 11px; color: #94A3B8; font-family: monospace; margin-bottom: 8px;" id="status-label">Rueda del ratón o arrastrar para scroll • Clic para tocar</div>
+  <div style="font-size: 11px; color: #94A3B8; font-family: monospace; margin-bottom: 6px; text-align: center;" id="status-label">Rueda del ratón o arrastrar para scroll • Clic para tocar</div>
 
   <div class="bottom-bar">
     <button class="nav-btn" id="btn-back">◀ Atrás</button>
     <button class="nav-btn" id="btn-home">⚪ Inicio</button>
     <button class="nav-btn" id="btn-recents">▦ Recientes</button>
-    <button class="nav-btn" id="btn-rotate" style="color: #00E5FF;">↻ Rotar (0°)</button>
+    <span style="border-left: 1px solid rgba(255, 158, 44, 0.3); margin: 0 4px; height: 20px;"></span>
+    <button class="nav-btn nav-btn-scroll" id="btn-scroll-up">⬆ Subir (Scroll)</button>
+    <button class="nav-btn nav-btn-scroll" id="btn-scroll-down">⬇ Bajar (Scroll)</button>
+    <button class="nav-btn" id="btn-fullscreen" style="color: #00E5FF;">⛶ Pantalla Completa</button>
     <button class="nav-btn" id="btn-dim" style="color: #69F0AE;">🌙 Modo Ahorro</button>
   </div>
 

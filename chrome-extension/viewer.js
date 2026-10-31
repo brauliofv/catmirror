@@ -11,7 +11,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnBack = document.getElementById('btn-back');
   const btnHome = document.getElementById('btn-home');
   const btnRecents = document.getElementById('btn-recents');
-  const btnRotate = document.getElementById('btn-rotate');
+  const btnRotLeft = document.getElementById('btn-rot-left');
+  const btnRotRight = document.getElementById('btn-rot-right');
+  const btnScrollUp = document.getElementById('btn-scroll-up');
+  const btnScrollDown = document.getElementById('btn-scroll-down');
+  const btnFullscreen = document.getElementById('btn-fullscreen');
   const btnDim = document.getElementById('btn-dim');
 
   const baseUrl = `http://${host}:8888`;
@@ -34,27 +38,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const isSideways = (rotationAngle === 90 || rotationAngle === 270);
 
+    let containerW, containerH;
     if (!isSideways) {
-      // Portrait container (0° or 180°)
-      const frameH = Math.min(stageH, stageW / portraitAspect);
-      const frameW = frameH * portraitAspect;
-      frame.style.width = Math.round(frameW) + 'px';
-      frame.style.height = Math.round(frameH) + 'px';
-      streamImg.style.width = Math.round(frameW) + 'px';
-      streamImg.style.height = Math.round(frameH) + 'px';
+      // Modo Vertical (0° o 180°)
+      containerH = Math.min(stageH, stageW / portraitAspect);
+      containerW = containerH * portraitAspect;
+      frame.style.width = Math.round(containerW) + 'px';
+      frame.style.height = Math.round(containerH) + 'px';
+      streamImg.style.width = Math.round(containerW) + 'px';
+      streamImg.style.height = Math.round(containerH) + 'px';
     } else {
-      // Landscape container (90° or 270°)
+      // Modo Horizontal (90° o 270°)
       const landscapeAspect = 1 / portraitAspect;
-      const frameW = Math.min(stageW, stageH * landscapeAspect);
-      const frameH = frameW / landscapeAspect;
-      frame.style.width = Math.round(frameW) + 'px';
-      frame.style.height = Math.round(frameH) + 'px';
-      // When rotated 90/270deg, streamImg dimensions are inverted to match the container
-      streamImg.style.width = Math.round(frameH) + 'px';
-      streamImg.style.height = Math.round(frameW) + 'px';
+      containerW = Math.min(stageW, stageH * landscapeAspect);
+      containerH = containerW / landscapeAspect;
+      frame.style.width = Math.round(containerW) + 'px';
+      frame.style.height = Math.round(containerH) + 'px';
+      // Invertir dimensiones para que el elemento rotado 90/270deg llene el 100% del contenedor sin barras negras:
+      streamImg.style.width = Math.round(containerH) + 'px';
+      streamImg.style.height = Math.round(containerW) + 'px';
     }
 
-    streamImg.style.transform = `rotate(${rotationAngle}deg)`;
+    streamImg.style.position = 'absolute';
+    streamImg.style.left = '50%';
+    streamImg.style.top = '50%';
+    streamImg.style.transform = `translate(-50%, -50%) rotate(${rotationAngle}deg)`;
+    streamImg.style.transformOrigin = 'center center';
   }
 
   streamImg.addEventListener('load', updateLayout);
@@ -63,13 +72,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function setRotation(deg) {
     rotationAngle = (deg % 360 + 360) % 360;
-    btnRotate.textContent = `↻ Rotar (${rotationAngle}°)`;
+    [0, 90, 180, 270].forEach(a => {
+      const pill = document.getElementById('rot-' + a);
+      if (pill) pill.classList.toggle('active', a === rotationAngle);
+    });
+    const names = { 0: 'Vertical (0°)', 90: 'Horizontal (90°)', 180: 'Invertido (180°)', 270: 'Horizontal Invertido (270°)' };
+    if (statusLabel) {
+      statusLabel.textContent = `Rotación: ${names[rotationAngle] || rotationAngle + '°'}`;
+    }
     updateLayout();
   }
 
-  btnRotate.onclick = () => {
-    setRotation(rotationAngle + 90);
-  };
+  if (btnRotLeft) btnRotLeft.onclick = () => setRotation(rotationAngle - 90);
+  if (btnRotRight) btnRotRight.onclick = () => setRotation(rotationAngle + 90);
+  [0, 90, 180, 270].forEach(a => {
+    const pill = document.getElementById('rot-' + a);
+    if (pill) pill.onclick = () => setRotation(a);
+  });
+
+  if (btnFullscreen) {
+    btnFullscreen.onclick = () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+      setTimeout(updateLayout, 200);
+    };
+    document.addEventListener('fullscreenchange', () => setTimeout(updateLayout, 200));
+  }
+
+  function scrollPhone(direction) {
+    const scrollDown = (direction === 'down');
+    if (statusLabel) {
+      statusLabel.textContent = scrollDown ? 'Desplazando hacia abajo (scroll down)...' : 'Desplazando hacia arriba (scroll up)...';
+    }
+    const startRelY = scrollDown ? 0.75 : 0.25;
+    const endRelY = scrollDown ? 0.25 : 0.75;
+    const startP = mapToPhone(0.5, startRelY);
+    const endP = mapToPhone(0.5, endRelY);
+    sendTouch(2, endP.x, endP.y, startP.x, startP.y, 250);
+  }
+
+  if (btnScrollUp) btnScrollUp.onclick = () => scrollPhone('up');
+  if (btnScrollDown) btnScrollDown.onclick = () => scrollPhone('down');
 
   function mapToPhone(relX, relY) {
     let px = relX;
