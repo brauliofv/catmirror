@@ -88,6 +88,10 @@ fun EmitterScreen(
     isAccessibilityEnabled: Boolean,
     connectedClient: String?,
     stats: StreamStats,
+    isScreenDimmed: Boolean = false,
+    isRemoteControlConfirmed: Boolean = false,
+    onToggleScreenDim: () -> Unit = {},
+    onConfirmRemoteControl: () -> Unit = {},
     onStartStreaming: (resultCode: Int, intentData: Intent?) -> Unit,
     onStopStreaming: () -> Unit,
     onRegeneratePin: () -> Unit,
@@ -100,6 +104,34 @@ fun EmitterScreen(
 
     BackHandler {
         onNavigateBack()
+    }
+
+    val activity = context as? Activity
+
+    // Control de brillo de pantalla para ahorro de batería
+    androidx.compose.runtime.LaunchedEffect(isScreenDimmed) {
+        activity?.let { act ->
+            val lp = act.window.attributes
+            if (isScreenDimmed) {
+                lp.screenBrightness = 0.01f // Brillo al mínimo para no agotar la batería
+            } else {
+                lp.screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            }
+            act.window.attributes = lp
+        }
+    }
+
+    // Mantener la pantalla encendida mientras se transmite o espera para evitar bloqueo y pérdida de conexión
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose {
+            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            activity?.let { act ->
+                val lp = act.window.attributes
+                lp.screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                act.window.attributes = lp
+            }
+        }
     }
 
     // Media projection launcher
@@ -235,7 +267,22 @@ fun EmitterScreen(
                         )
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(CatSlateCard)
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "💡 Pantalla activa (evita suspensión y corte)",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, color = CatNeonGreen)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     // QR Code
                     val pairingPayload = "catmirror://${networkInfo.ipAddress}:8888?pin=$pin"
@@ -386,6 +433,140 @@ fun EmitterScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            // Tarjeta de Verificación de Control Remoto y Ahorro de Batería
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+                    .testTag("remote_control_confirmation_card"),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isScreenDimmed) Color(0xFF13201D) else CatSlateSurface
+                ),
+                border = androidx.compose.foundation.BorderStroke(
+                    width = 1.5.dp,
+                    color = if (isScreenDimmed) CatNeonGreen else if (isRemoteControlConfirmed) CatCyanSecondary else CatAmberPrimary.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (isScreenDimmed) Icons.Default.CheckCircle else Icons.Default.TouchApp,
+                                contentDescription = null,
+                                tint = if (isScreenDimmed) CatNeonGreen else CatAmberPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "CONTROL REMOTO Y AHORRO",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    color = if (isScreenDimmed) CatNeonGreen else CatTextSecondary
+                                )
+                            )
+                        }
+
+                        if (isScreenDimmed) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = CatNeonGreen.copy(alpha = 0.2f)
+                            ) {
+                                Text(
+                                    text = "1% Brillo",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall.copy(color = CatNeonGreen, fontWeight = FontWeight.Bold)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = if (isScreenDimmed) {
+                            "✅ Control remoto verificado. La pantalla física está atenuada al mínimo para ahorrar batería, mientras la transmisión se emite con total claridad al receptor."
+                        } else if (isRemoteControlConfirmed) {
+                            "Control remoto verificado previamente. Puedes activar el modo ahorro en cualquier momento para atenuar la pantalla del dispositivo."
+                        } else {
+                            "Haz tap en el botón de abajo desde tu computadora o receptor remoto para confirmar el control táctil y activar la pantalla en brillo mínimo (modo ahorro)."
+                        },
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = if (isScreenDimmed) Color(0xFFE2E8F0) else CatTextSecondary,
+                            lineHeight = 18.sp
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    if (!isScreenDimmed) {
+                        Button(
+                            onClick = onConfirmRemoteControl,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .testTag("confirm_remote_touch_button"),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isRemoteControlConfirmed) CatCyanSecondary else CatAmberPrimary
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.TouchApp,
+                                contentDescription = "Confirmar",
+                                tint = Color.Black,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (isRemoteControlConfirmed) "🌙 Activar Modo Ahorro (Atenuar)" else "🎯 Tocar aquí para Confirmar y Atenuar",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.Black
+                                )
+                            )
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = onToggleScreenDim,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .testTag("restore_brightness_button"),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = CatNeonGreen),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, CatNeonGreen)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Restaurar",
+                                tint = CatNeonGreen,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "☀️ Restaurar Brillo Normal",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = CatNeonGreen
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Live Metrics Dashboard (when streaming)
             Card(

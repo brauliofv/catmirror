@@ -33,7 +33,8 @@ class StreamServer(
     private val scope: CoroutineScope,
     private val port: Int = Protocol.DEFAULT_PORT,
     private val onClientConnected: (String) -> Unit = {},
-    private val onClientDisconnected: (String) -> Unit = {}
+    private val onClientDisconnected: (String) -> Unit = {},
+    private val onToggleDim: ((Boolean) -> Unit)? = null
 ) {
     private val TAG = "CatMirrorServer"
 
@@ -59,8 +60,22 @@ class StreamServer(
 
         acceptJob = scope.launch(Dispatchers.IO) {
             try {
-                serverSocket = ServerSocket(port).apply {
-                    reuseAddress = true
+                var bound = false
+                var attempts = 0
+                while (!bound && attempts < 3 && isRunning.get()) {
+                    try {
+                        attempts++
+                        try { serverSocket?.close() } catch (_: Exception) {}
+                        serverSocket = ServerSocket().apply {
+                            reuseAddress = true
+                            bind(java.net.InetSocketAddress(port))
+                        }
+                        bound = true
+                    } catch (e: java.net.BindException) {
+                        if (attempts >= 3) throw e
+                        AppLogger.w(TAG, "Puerto $port ocupado temporalmente, reintentando en 350ms (intento $attempts)...")
+                        delay(350)
+                    }
                 }
                 AppLogger.i(TAG, "Servidor catmirror activo en puerto $port (TCP + Web/Chrome Extension)")
 
@@ -165,19 +180,25 @@ class StreamServer(
                 path == "/touch" -> {
                     val reqPin = uri.getQueryParameter("pin") ?: ""
                     if (currentPin.isEmpty() || reqPin == currentPin) {
-                        val action = uri.getQueryParameter("action")?.toIntOrNull() ?: 0
+                        val action = uri.getQueryParameter("action")?.toIntOrNull() ?: 1
                         val x = uri.getQueryParameter("x")?.toFloatOrNull() ?: 0.5f
                         val y = uri.getQueryParameter("y")?.toFloatOrNull() ?: 0.5f
+                        val sx = uri.getQueryParameter("sx")?.toFloatOrNull() ?: x
+                        val sy = uri.getQueryParameter("sy")?.toFloatOrNull() ?: y
+                        val dur = uri.getQueryParameter("dur")?.toLongOrNull() ?: 150L
 
                         val a11y = CatMirrorAccessibilityService.getInstance()
-                        if (action == 0 || action == 1) {
-                            a11y?.injectTap(x, y)
-                        } else if (action == 2) {
-                            val startX = uri.getQueryParameter("sx")?.toFloatOrNull() ?: x
-                            val startY = uri.getQueryParameter("sy")?.toFloatOrNull() ?: y
-                            a11y?.injectDrag(startX, startY, x, y, 60)
+                        if (a11y == null) {
+                            AppLogger.w(TAG, "Toque recibido desde navegador pero CatMirrorAccessibilityService está inactivo en el teléfono")
+                            sendTextResponse(out, "a11y_inactive")
+                        } else {
+                            val ok = when (action) {
+                                0, 1 -> a11y.injectTap(x, y)
+                                2 -> a11y.injectDrag(sx, sy, x, y, dur)
+                                else -> a11y.injectTap(x, y)
+                            }
+                            sendTextResponse(out, if (ok) "ok" else "error")
                         }
-                        sendTextResponse(out, "ok")
                     } else {
                         sendUnauthorized(out)
                     }
@@ -189,6 +210,19 @@ class StreamServer(
                     if (currentPin.isEmpty() || reqPin == currentPin) {
                         val code = uri.getQueryParameter("code")?.toByteOrNull() ?: 1
                         CatMirrorAccessibilityService.getInstance()?.executeGlobal(code)
+                        sendTextResponse(out, "ok")
+                    } else {
+                        sendUnauthorized(out)
+                    }
+                    socket.close()
+                }
+
+                path == "/dim" -> {
+                    val reqPin = uri.getQueryParameter("pin") ?: ""
+                    if (currentPin.isEmpty() || reqPin == currentPin) {
+                        val state = uri.getQueryParameter("state")
+                        val enable = if (state == "0") false else true
+                        onToggleDim?.invoke(enable)
                         sendTextResponse(out, "ok")
                     } else {
                         sendUnauthorized(out)
@@ -482,7 +516,7 @@ class StreamServer(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>catmirror — Web Remote Control</title>
+    <title>catmirror — Control Remoto en Vivo</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -493,6 +527,8 @@ class StreamServer(
             flex-direction: column;
             align-items: center;
             min-height: 100vh;
+            user-select: none;
+            overflow-x: hidden;
         }
         header {
             width: 100%;
@@ -502,52 +538,89 @@ class StreamServer(
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid rgba(255, 158, 44, 0.3);
+            flex-wrap: wrap;
+            gap: 10px;
         }
-        .logo { font-size: 20px; font-weight: bold; color: #FF9E2C; display: flex; align-items: center; gap: 8px; }
-        .controls { display: flex; align-items: center; gap: 12px; }
+        .logo { font-size: 18px; font-weight: bold; color: #FF9E2C; display: flex; align-items: center; gap: 8px; }
+        .controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         input {
             background: #0F141C; border: 1px solid #00E5FF; color: white;
-            padding: 6px 12px; border-radius: 8px; font-size: 14px;
+            padding: 7px 12px; border-radius: 8px; font-size: 14px;
+            font-family: monospace; letter-spacing: 2px; width: 140px; text-align: center;
         }
         button {
             background: #FF9E2C; border: none; color: black; font-weight: bold;
-            padding: 8px 16px; border-radius: 8px; cursor: pointer; transition: 0.2s;
+            padding: 8px 16px; border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 13px;
         }
         button:hover { background: #FFBE76; }
+        .btn-secondary {
+            background: #222F42; color: #00E5FF; border: 1px solid rgba(0, 229, 255, 0.4);
+        }
+        .btn-secondary:hover {
+            background: #00E5FF; color: #000;
+        }
+        .viewport-wrapper {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            padding: 16px;
+        }
         .viewport-container {
-            position: relative; margin: 20px auto;
+            position: relative;
             border: 2px solid rgba(0, 229, 255, 0.4);
             border-radius: 16px; overflow: hidden; background: #000;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
         }
-        #stream-img { display: block; max-height: 80vh; max-width: 90vw; cursor: pointer; user-select: none; }
+        #stream-img {
+            display: block;
+            max-height: 75vh;
+            max-width: 85vw;
+            cursor: pointer;
+            user-select: none;
+            transition: transform 0.25s ease-out;
+            transform-origin: center center;
+        }
         .nav-bar {
-            margin-top: 10px; margin-bottom: 24px;
-            display: flex; gap: 16px; background: #182230; padding: 10px 20px;
+            margin-top: 6px; margin-bottom: 20px;
+            display: flex; gap: 14px; background: #182230; padding: 10px 22px;
             border-radius: 30px; border: 1px solid rgba(255, 158, 44, 0.4);
         }
         .nav-btn { background: #222F42; color: #FF9E2C; padding: 8px 18px; border-radius: 20px; font-size: 14px; }
         .nav-btn:hover { background: #FF9E2C; color: black; }
         .ripple {
-            position: absolute; border: 2px solid #FF9E2C; border-radius: 50%;
+            position: absolute; border: 2px solid #00E5FF; border-radius: 50%;
             pointer-events: none; transform: translate(-50%, -50%);
-            animation: rip 0.4s ease-out forwards;
+            animation: rip 0.35s ease-out forwards;
         }
-        @keyframes rip { from { width: 10px; height: 10px; opacity: 1; } to { width: 50px; height: 50px; opacity: 0; } }
+        @keyframes rip { from { width: 6px; height: 6px; opacity: 1; } to { width: 44px; height: 44px; opacity: 0; } }
+        .status-msg {
+            font-size: 11px; color: #94A3B8; font-family: monospace; margin-bottom: 8px;
+        }
     </style>
 </head>
 <body>
     <header>
-        <div class="logo">🐱 catmirror Web Remote</div>
+        <div class="logo">🐱 catmirror Control Remoto</div>
         <div class="controls">
-            <input type="text" id="pin-input" placeholder="PIN de 6 dígitos" maxlength="6" />
+            <input type="text" id="pin-input" placeholder="PIN 6 dígitos" maxlength="6" />
             <button id="connect-btn">Conectar</button>
+            <button class="btn-secondary" id="rotate-btn">↻ Rotar (0°)</button>
+            <button class="btn-secondary" id="dim-btn" onclick="toggleDim()">🌙 Modo Ahorro</button>
         </div>
     </header>
 
-    <div class="viewport-container" id="viewport">
-        <img id="stream-img" alt="Pantalla de catmirror" src="" />
+    <div class="viewport-wrapper">
+        <div class="viewport-container" id="viewport">
+            <img id="stream-img" alt="Pantalla de catmirror" src="" />
+        </div>
     </div>
+
+    <div class="status-msg" id="status-label">Haz clic para tocar la pantalla del teléfono</div>
 
     <div class="nav-bar">
         <button class="nav-btn" onclick="sendKey(1)">◀ Atrás</button>
@@ -560,50 +633,160 @@ class StreamServer(
         const viewport = document.getElementById('viewport');
         const pinInput = document.getElementById('pin-input');
         const connectBtn = document.getElementById('connect-btn');
+        const rotateBtn = document.getElementById('rotate-btn');
+        const statusLabel = document.getElementById('status-label');
+
+        let rotationAngle = 0;
+
+        function setRotation(deg) {
+            rotationAngle = (deg % 360 + 360) % 360;
+            rotateBtn.textContent = '↻ Rotar (' + rotationAngle + '°)';
+            img.style.transform = 'rotate(' + rotationAngle + 'deg)';
+            if (rotationAngle === 90 || rotationAngle === 270) {
+                img.style.maxHeight = '85vw';
+                img.style.maxWidth = '75vh';
+            } else {
+                img.style.maxHeight = '75vh';
+                img.style.maxWidth = '85vw';
+            }
+        }
+
+        rotateBtn.onclick = () => {
+            setRotation(rotationAngle + 90);
+        };
 
         function connect() {
             const pin = pinInput.value.trim();
             img.src = '/stream?pin=' + encodeURIComponent(pin) + '&t=' + Date.now();
+            statusLabel.textContent = 'Transmisión activa con rotación de ' + rotationAngle + '°';
         }
 
         connectBtn.onclick = connect;
 
-        let isDown = false;
-        let startX = 0, startY = 0;
+        // Auto-detect PIN from URL parameter if present
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('pin')) {
+            pinInput.value = urlParams.get('pin');
+        }
+
+        let isDimmed = false;
+        function toggleDim() {
+            isDimmed = !isDimmed;
+            const pin = pinInput.value.trim();
+            const btn = document.getElementById('dim-btn');
+            btn.textContent = isDimmed ? '☀️ Restaurar Brillo' : '🌙 Modo Ahorro';
+            statusLabel.textContent = isDimmed ? 'Pantalla del teléfono atenuada al mínimo para ahorrar batería' : 'Brillo normal restaurado en el teléfono';
+            fetch('/dim?state=' + (isDimmed ? '1' : '0') + '&pin=' + encodeURIComponent(pin)).catch(()=>{});
+        }
+
+        function mapToPhone(relX, relY) {
+            let px = relX;
+            let py = relY;
+            if (rotationAngle === 90) {
+                px = relY;
+                py = 1 - relX;
+            } else if (rotationAngle === 180) {
+                px = 1 - relX;
+                py = 1 - relY;
+            } else if (rotationAngle === 270) {
+                px = 1 - relY;
+                py = relX;
+            }
+            return {
+                x: Math.max(0, Math.min(1, px)),
+                y: Math.max(0, Math.min(1, py))
+            };
+        }
+
+        let isMouseDown = false;
+        let startPhoneX = 0, startPhoneY = 0;
+        let downTime = 0;
 
         img.addEventListener('mousedown', (e) => {
-            isDown = true;
+            if (e.button !== 0) return;
+            isMouseDown = true;
+            downTime = Date.now();
             const rect = img.getBoundingClientRect();
-            startX = (e.clientX - rect.left) / rect.width;
-            startY = (e.clientY - rect.top) / rect.height;
-            sendTouch(0, startX, startY);
-            showRipple(e.clientX - rect.left, e.clientY - rect.top);
-        });
-
-        img.addEventListener('mousemove', (e) => {
-            if (!isDown) return;
-            const rect = img.getBoundingClientRect();
-            const x = (e.clientX - rect.left) / rect.width;
-            const y = (e.clientY - rect.top) / rect.height;
-            sendTouch(2, x, y, startX, startY);
+            const relX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            const relY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+            const p = mapToPhone(relX, relY);
+            startPhoneX = p.x;
+            startPhoneY = p.y;
+            showRipple(e.clientX - viewport.getBoundingClientRect().left, e.clientY - viewport.getBoundingClientRect().top);
         });
 
         window.addEventListener('mouseup', (e) => {
-            if (!isDown) return;
-            isDown = false;
+            if (!isMouseDown) return;
+            isMouseDown = false;
             const rect = img.getBoundingClientRect();
-            const x = (e.clientX - rect.left) / rect.width;
-            const y = (e.clientY - rect.top) / rect.height;
-            sendTouch(1, x, y);
+            const relX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            const relY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+            const p = mapToPhone(relX, relY);
+
+            const dist = Math.hypot(p.x - startPhoneX, p.y - startPhoneY);
+            const duration = Math.min(600, Math.max(100, Date.now() - downTime));
+
+            if (dist < 0.02) {
+                sendTouch(1, p.x, p.y);
+            } else {
+                sendTouch(2, p.x, p.y, startPhoneX, startPhoneY, duration);
+            }
         });
 
-        function sendTouch(action, x, y, sx = x, sy = y) {
+        // Touch event support for tablets & phones
+        img.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                const t = e.touches[0];
+                isMouseDown = true;
+                downTime = Date.now();
+                const rect = img.getBoundingClientRect();
+                const relX = Math.max(0, Math.min(1, (t.clientX - rect.left) / rect.width));
+                const relY = Math.max(0, Math.min(1, (t.clientY - rect.top) / rect.height));
+                const p = mapToPhone(relX, relY);
+                startPhoneX = p.x;
+                startPhoneY = p.y;
+                showRipple(t.clientX - viewport.getBoundingClientRect().left, t.clientY - viewport.getBoundingClientRect().top);
+            }
+        }, { passive: true });
+
+        img.addEventListener('touchend', (e) => {
+            if (!isMouseDown) return;
+            isMouseDown = false;
+            const t = e.changedTouches[0];
+            const rect = img.getBoundingClientRect();
+            const relX = Math.max(0, Math.min(1, (t.clientX - rect.left) / rect.width));
+            const relY = Math.max(0, Math.min(1, (t.clientY - rect.top) / rect.height));
+            const p = mapToPhone(relX, relY);
+            const dist = Math.hypot(p.x - startPhoneX, p.y - startPhoneY);
+            const duration = Math.min(600, Math.max(100, Date.now() - downTime));
+            if (dist < 0.02) {
+                sendTouch(1, p.x, p.y);
+            } else {
+                sendTouch(2, p.x, p.y, startPhoneX, startPhoneY, duration);
+            }
+        }, { passive: true });
+
+        function sendTouch(action, x, y, sx = x, sy = y, dur = 150) {
             const pin = pinInput.value.trim();
-            fetch('/touch?action=' + action + '&x=' + x.toFixed(4) + '&y=' + y.toFixed(4) + '&sx=' + sx.toFixed(4) + '&sy=' + sy.toFixed(4) + '&pin=' + encodeURIComponent(pin)).catch(()=>{});
+            statusLabel.textContent = (action === 2 ? 'Deslizando...' : 'Tap en ' + (x * 100).toFixed(0) + '%, ' + (y * 100).toFixed(0) + '%');
+            fetch('/touch?action=' + action + '&x=' + x.toFixed(4) + '&y=' + y.toFixed(4) + '&sx=' + sx.toFixed(4) + '&sy=' + sy.toFixed(4) + '&dur=' + dur + '&pin=' + encodeURIComponent(pin))
+                .then(r => r.text())
+                .then(t => {
+                    if (t === 'a11y_inactive') {
+                        statusLabel.textContent = '⚠️ Toque no inyectado: Servicio de Accesibilidad desactivado en el teléfono';
+                    } else if (t === 'ok') {
+                        statusLabel.textContent = 'Toque ejecutado correctamente';
+                    }
+                })
+                .catch(() => {
+                    statusLabel.textContent = 'Error de conexión con el dispositivo';
+                });
         }
 
         function sendKey(code) {
             const pin = pinInput.value.trim();
+            const names = { 1: 'Atrás', 2: 'Inicio', 3: 'Recientes' };
+            statusLabel.textContent = 'Botón: ' + (names[code] || code);
             fetch('/key?code=' + code + '&pin=' + encodeURIComponent(pin)).catch(()=>{});
         }
 
@@ -613,7 +796,7 @@ class StreamServer(
             r.style.left = x + 'px';
             r.style.top = y + 'px';
             viewport.appendChild(r);
-            setTimeout(() => r.remove(), 400);
+            setTimeout(() => r.remove(), 350);
         }
 
         connect();

@@ -50,6 +50,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _emitterConnectedClient = MutableStateFlow<String?>(null)
     val emitterConnectedClient: StateFlow<String?> = _emitterConnectedClient.asStateFlow()
 
+    private val _isScreenDimmed = MutableStateFlow(false)
+    val isScreenDimmed: StateFlow<Boolean> = _isScreenDimmed.asStateFlow()
+
+    private val _isRemoteControlConfirmed = MutableStateFlow(false)
+    val isRemoteControlConfirmed: StateFlow<Boolean> = _isRemoteControlConfirmed.asStateFlow()
+
     private val streamServer = StreamServer(
         scope = viewModelScope,
         onClientConnected = { clientIp ->
@@ -63,6 +69,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch {
                 Toast.makeText(getApplication(), "Receptor desconectado: $clientIp", Toast.LENGTH_SHORT).show()
             }
+        },
+        onToggleDim = { enableDim ->
+            setScreenDim(enableDim)
         }
     )
     val emitterStats: StateFlow<StreamStats> = streamServer.stats
@@ -140,11 +149,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         discoveryBroadcaster.stop()
         streamServer.stop()
         _emitterConnectedClient.value = null
+        _isScreenDimmed.value = false
 
         val serviceIntent = Intent(context, ScreenStreamingService::class.java).apply {
             action = ScreenStreamingService.ACTION_STOP
         }
         context.startService(serviceIntent)
+    }
+
+    fun toggleScreenDim() {
+        val next = !_isScreenDimmed.value
+        _isScreenDimmed.value = next
+        if (next) {
+            _isRemoteControlConfirmed.value = true
+        }
+    }
+
+    fun setScreenDim(dimmed: Boolean) {
+        _isScreenDimmed.value = dimmed
+        if (dimmed) {
+            _isRemoteControlConfirmed.value = true
+        }
+    }
+
+    fun confirmRemoteControl() {
+        _isRemoteControlConfirmed.value = true
+        _isScreenDimmed.value = true
+        viewModelScope.launch {
+            Toast.makeText(getApplication(), "¡Control táctil verificado! Modo ahorro activado (pantalla opaca/brillo mínimo)", Toast.LENGTH_LONG).show()
+        }
     }
 
     fun updateManualIp(ip: String) {

@@ -92,6 +92,8 @@ fun CatMirrorApp(
                 val isStreaming by viewModel.isEmitterStreaming.collectAsStateWithLifecycle()
                 val connectedClient by viewModel.emitterConnectedClient.collectAsStateWithLifecycle()
                 val stats by viewModel.emitterStats.collectAsStateWithLifecycle()
+                val isScreenDimmed by viewModel.isScreenDimmed.collectAsStateWithLifecycle()
+                val isRemoteControlConfirmed by viewModel.isRemoteControlConfirmed.collectAsStateWithLifecycle()
 
                 EmitterScreen(
                     networkInfo = networkInfo,
@@ -100,6 +102,10 @@ fun CatMirrorApp(
                     isAccessibilityEnabled = isAccessibilityEnabled,
                     connectedClient = connectedClient,
                     stats = stats,
+                    isScreenDimmed = isScreenDimmed,
+                    isRemoteControlConfirmed = isRemoteControlConfirmed,
+                    onToggleScreenDim = { viewModel.toggleScreenDim() },
+                    onConfirmRemoteControl = { viewModel.confirmRemoteControl() },
                     onStartStreaming = { resultCode, intentData ->
                         viewModel.startEmitter(context, resultCode, intentData)
                     },

@@ -34,6 +34,7 @@ Todo el proceso ocurre de manera **local** (sin servidores en la nube intermedia
   * **Wi-Fi:** Detección automática en la misma red mediante balizas UDP (Discovery Beacon).
   * **Cable USB:** Soporte directo a través de Anclaje de red USB (*USB Tethering*) o redirección de puertos ADB (`adb forward tcp:8888 tcp:8888`).
 * 🔒 **Emparejamiento Rápido y Seguro:** Código PIN de 6 dígitos autogenerado y código QR dibujado en pantalla para vinculación instantánea.
+* 🌙 **Modo Ahorro de Batería & Confirmación Táctil:** Botón interactivo para comprobar el control remoto; al recibir el toque (desde la PC o receptor), la pantalla física del teléfono emisor se atenúa al 1% de brillo (modo opaco/ahorro) para no desgastar la batería ni calentarse, manteniendo la transmisión en calidad total. Permite restaurar el brillo normal en cualquier momento tanto desde el teléfono como desde el navegador/extensión.
 * 🎮 **Barra de Navegación Remota:** Atajos dedicados para los botones del sistema Android (*Atrás*, *Inicio*, *Multitarea*) y alternancia de escala de pantalla (*Ajustar / Llenar*).
 * 🛠️ **Consola de Diagnósticos y Errores Integrada:** Visor de eventos en vivo dentro de la app con botón de un toque para copiar reportes técnicos y facilitar la depuración.
 
@@ -107,6 +108,12 @@ Instala el archivo `catmirror.apk` en los dos teléfonos.
    ```
    *(o `http://127.0.0.1:8888` si usas cable USB con ADB).*
 3. Escribe el PIN de 6 dígitos y haz clic con el ratón sobre la pantalla para hacer tap, scroll y usar los botones de Inicio, Atrás y Recientes.
+4. **🎯 Confirmación de Control y Modo Ahorro (Pantalla Opaca):**
+   * En la pantalla del teléfono verás el botón **"🎯 Tocar aquí para Confirmar y Atenuar"**.
+   * Haz clic sobre ese botón directamente desde el navegador o extensión en tu computadora: al recibir el tap remoto, el teléfono confirmará la conexión y bajará automáticamente el brillo de la pantalla física al 1% (modo opaco/ahorro de batería).
+   * También puedes pulsar el botón **"🌙 Modo Ahorro"** en la barra superior del navegador/extensión para atenuar o restaurar el brillo del teléfono a distancia.
+   * En el teléfono, si necesitas ver la pantalla con brillo normal, solo pulsa **"☀️ Restaurar Brillo Normal"**.
+5. **Botón de Rotación ↻:** Si giras el teléfono o requieres cambiar la vista horizontal/vertical, pulsa el botón **"↻ Rotar"** en la barra superior para rotar la imagen a 90°, 180° o 270° manteniendo el mapeo exacto de los clics.
 
 ### Método B: Extensión para Google Chrome
 El proyecto incluye una extensión oficial en la carpeta `chrome-extension/`:
@@ -114,7 +121,7 @@ El proyecto incluye una extensión oficial en la carpeta `chrome-extension/`:
 2. Activa el interruptor **"Modo de desarrollador"** (en la esquina superior derecha).
 3. Haz clic en **"Cargar descomprimida"** (*Load unpacked*).
 4. Selecciona la carpeta `chrome-extension/` de este proyecto.
-5. Haz clic en el icono de **catmirror 🐱** en tu barra de extensiones de Chrome para abrir el visor interactivo en una ventana dedicada.
+5. Haz clic en el icono de **catmirror 🐱** en tu barra de extensiones de Chrome para abrir el visor interactivo con soporte de rotación de pantalla y control remoto.
 
 ---
 

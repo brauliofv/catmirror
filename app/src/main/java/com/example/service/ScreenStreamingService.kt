@@ -70,6 +70,7 @@ class ScreenStreamingService : Service() {
 
     private var simulationJob: Job? = null
     private val serviceScope = CoroutineScope(Dispatchers.Default)
+    private var wakeLock: android.os.PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -78,6 +79,15 @@ class ScreenStreamingService : Service() {
         createNotificationChannel()
         handlerThread = HandlerThread("ScreenCaptureThread").apply { start() }
         backgroundHandler = Handler(handlerThread!!.looper)
+
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+            wakeLock = pm?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "catmirror:StreamWakeLock")?.apply {
+                setReferenceCounted(false)
+            }
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "No se pudo crear WakeLock: ${e.message}")
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -256,6 +266,12 @@ class ScreenStreamingService : Service() {
         }, backgroundHandler)
 
         _isStreaming.value = true
+        try {
+            if (wakeLock?.isHeld == false) {
+                wakeLock?.acquire(12 * 60 * 60 * 1000L)
+                AppLogger.i(TAG, "WakeLock adquirido (evita suspensión de CPU/Red)")
+            }
+        } catch (_: Exception) {}
     } catch (e: Exception) {
         AppLogger.e(TAG, "Fallo al iniciar MediaProjection: ${e.message}", e)
         startSimulatedStream()
@@ -265,6 +281,11 @@ class ScreenStreamingService : Service() {
     private fun startSimulatedStream() {
         simulationJob?.cancel()
         _isStreaming.value = true
+        try {
+            if (wakeLock?.isHeld == false) {
+                wakeLock?.acquire(12 * 60 * 60 * 1000L)
+            }
+        } catch (_: Exception) {}
 
         val width = 720
         val height = 1280
@@ -333,6 +354,13 @@ class ScreenStreamingService : Service() {
         _isStreaming.value = false
         simulationJob?.cancel()
         simulationJob = null
+
+        try {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+                AppLogger.i(TAG, "WakeLock liberado")
+            }
+        } catch (_: Exception) {}
 
         try {
             virtualDisplay?.release()
