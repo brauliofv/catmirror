@@ -150,6 +150,7 @@ fun CatMirrorApp(
 
             AppScreen.REMOTE_VIEW -> {
                 val status by viewModel.receiverStatus.collectAsStateWithLifecycle()
+                val receiverLastError by viewModel.receiverLastError.collectAsStateWithLifecycle()
                 val frame by viewModel.receiverFrame.collectAsStateWithLifecycle()
                 val stats by viewModel.receiverStats.collectAsStateWithLifecycle()
                 val isFitScreen by viewModel.fitScreen.collectAsStateWithLifecycle()
@@ -159,6 +160,8 @@ fun CatMirrorApp(
                     frame = frame,
                     stats = stats,
                     isFitScreen = isFitScreen,
+                    lastError = receiverLastError,
+                    networkInfo = networkInfo,
                     onTouch = { action, xRatio, yRatio ->
                         viewModel.sendTouch(action, xRatio, yRatio)
                     },

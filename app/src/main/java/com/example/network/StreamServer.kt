@@ -121,26 +121,35 @@ class StreamServer(
     }
 
     private suspend fun handleConnection(socket: Socket, clientIp: String) {
-        val bis = BufferedInputStream(socket.getInputStream())
-        bis.mark(4)
+        val bis = BufferedInputStream(socket.getInputStream(), 8192)
+        bis.mark(16)
         val b1 = bis.read()
         val b2 = bis.read()
         bis.reset()
 
-        if (b1 == Protocol.MAGIC_BYTE_1.toInt() && b2 == Protocol.MAGIC_BYTE_2.toInt()) {
+        val magic1 = Protocol.MAGIC_BYTE_1.toInt() and 0xFF
+        val magic2 = Protocol.MAGIC_BYTE_2.toInt() and 0xFF
+
+        if (b1 == magic1 && b2 == magic2) {
             // Android Binary Protocol
+            AppLogger.i(TAG, "Detectada conexión binaria Android CatMirror desde $clientIp")
             val handler = BinaryClientHandler(socket, clientIp, bis)
             activeClients.add(handler)
-            handler.run()
-            activeClients.remove(handler)
+            try {
+                handler.run()
+            } finally {
+                activeClients.remove(handler)
+            }
         } else {
             // HTTP / Web / Chrome Extension Request
+            AppLogger.i(TAG, "Detectada petición HTTP/Web desde $clientIp (b1=$b1, b2=$b2)")
             handleHttpRequest(socket, clientIp, bis)
         }
     }
 
     private suspend fun handleHttpRequest(socket: Socket, clientIp: String, bis: BufferedInputStream) {
         try {
+            socket.soTimeout = 6000
             val reader = BufferedReader(InputStreamReader(bis, Charsets.UTF_8))
             val requestLine = reader.readLine() ?: return
             val parts = requestLine.split(" ")
@@ -366,15 +375,19 @@ class StreamServer(
             var dos: DataOutputStream? = null
             var dis: DataInputStream? = null
             try {
+                socket.soTimeout = 15000
                 dos = DataOutputStream(socket.getOutputStream())
                 dis = DataInputStream(bis)
 
                 val readJob = scope.launch(Dispatchers.IO) {
-                    while (isActive && !socket.isClosed) {
-                        try {
+                    try {
+                        while (isActive && !socket.isClosed) {
                             val b1 = dis.readByte()
                             val b2 = dis.readByte()
-                            if (b1 != Protocol.MAGIC_BYTE_1 || b2 != Protocol.MAGIC_BYTE_2) break
+                            if (b1 != Protocol.MAGIC_BYTE_1 || b2 != Protocol.MAGIC_BYTE_2) {
+                                AppLogger.w(TAG, "Encabezado inválido de $clientIp: b1=$b1, b2=$b2")
+                                break
+                            }
 
                             val packetType = dis.readByte()
                             val payloadLen = dis.readInt()
@@ -388,10 +401,10 @@ class StreamServer(
                                     _auth = valid
                                     Protocol.writeAuthResponse(dos, valid)
                                     if (valid) {
-                                        AppLogger.i(TAG, "Receptor Android $clientIp autenticado")
+                                        AppLogger.i(TAG, "Receptor Android $clientIp autenticado con éxito")
                                         onClientConnected(clientIp)
                                     } else {
-                                        AppLogger.e(TAG, "PIN inválido desde $clientIp")
+                                        AppLogger.e(TAG, "PIN inválido desde $clientIp (recibido '$receivedPin', esperado '$currentPin')")
                                         break
                                     }
                                 }
@@ -413,11 +426,13 @@ class StreamServer(
                                     if (payloadLen > 0) dis.skipBytes(payloadLen)
                                 }
                             }
-                        } catch (_: EOFException) {
-                            break
-                        } catch (_: Exception) {
-                            break
                         }
+                    } catch (e: Exception) {
+                        if (_auth) {
+                            AppLogger.i(TAG, "Receptor Android $clientIp desconectado (${e.message ?: e.javaClass.simpleName})")
+                        }
+                    } finally {
+                        close()
                     }
                 }
 
@@ -425,13 +440,20 @@ class StreamServer(
                     val frame = latestFrame
                     if (frame != null && _auth) {
                         latestFrame = null
-                        Protocol.writeFrame(dos, frame.width, frame.height, frame.timestamp, frame.jpegData)
+                        try {
+                            Protocol.writeFrame(dos, frame.width, frame.height, frame.timestamp, frame.jpegData)
+                        } catch (e: Exception) {
+                            AppLogger.i(TAG, "Error enviando frame a $clientIp: ${e.message}")
+                            break
+                        }
                     } else {
                         delay(6)
                     }
                 }
                 readJob.cancel()
-            } catch (_: Exception) {} finally {
+            } catch (e: Exception) {
+                AppLogger.w(TAG, "Sesión de $clientIp finalizada: ${e.message}")
+            } finally {
                 close()
             }
         }
@@ -565,29 +587,35 @@ class StreamServer(
             justify-content: center;
             align-items: center;
             width: 100%;
-            padding: 16px;
+            height: calc(100vh - 140px);
+            padding: 8px;
+            overflow: hidden;
+            position: relative;
         }
         .viewport-container {
             position: relative;
             border: 2px solid rgba(0, 229, 255, 0.4);
-            border-radius: 16px; overflow: hidden; background: #000;
+            border-radius: 18px; overflow: hidden; background: #000;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
-            display: inline-flex;
+            display: flex;
             justify-content: center;
             align-items: center;
+            transition: width 0.25s ease, height 0.25s ease;
+            cursor: grab;
+        }
+        .viewport-container:active {
+            cursor: grabbing;
         }
         #stream-img {
             display: block;
-            max-height: 75vh;
-            max-width: 85vw;
-            cursor: pointer;
             user-select: none;
-            transition: transform 0.25s ease-out;
-            transform-origin: center center;
+            -webkit-user-drag: none;
+            pointer-events: auto;
+            transition: transform 0.25s ease;
         }
         .nav-bar {
-            margin-top: 6px; margin-bottom: 20px;
-            display: flex; gap: 14px; background: #182230; padding: 10px 22px;
+            margin-top: 4px; margin-bottom: 12px;
+            display: flex; gap: 14px; background: #182230; padding: 8px 22px;
             border-radius: 30px; border: 1px solid rgba(255, 158, 44, 0.4);
         }
         .nav-btn { background: #222F42; color: #FF9E2C; padding: 8px 18px; border-radius: 20px; font-size: 14px; }
@@ -599,7 +627,7 @@ class StreamServer(
         }
         @keyframes rip { from { width: 6px; height: 6px; opacity: 1; } to { width: 44px; height: 44px; opacity: 0; } }
         .status-msg {
-            font-size: 11px; color: #94A3B8; font-family: monospace; margin-bottom: 8px;
+            font-size: 11px; color: #94A3B8; font-family: monospace; margin-bottom: 6px;
         }
     </style>
 </head>
@@ -614,13 +642,13 @@ class StreamServer(
         </div>
     </header>
 
-    <div class="viewport-wrapper">
+    <div class="viewport-wrapper" id="stage">
         <div class="viewport-container" id="viewport">
-            <img id="stream-img" alt="Pantalla de catmirror" src="" />
+            <img id="stream-img" alt="Pantalla de catmirror" src="" draggable="false" />
         </div>
     </div>
 
-    <div class="status-msg" id="status-label">Haz clic para tocar la pantalla del teléfono</div>
+    <div class="status-msg" id="status-label">Rueda del ratón o arrastrar para scroll • Clic para tocar</div>
 
     <div class="nav-bar">
         <button class="nav-btn" onclick="sendKey(1)">◀ Atrás</button>
@@ -631,6 +659,7 @@ class StreamServer(
     <script>
         const img = document.getElementById('stream-img');
         const viewport = document.getElementById('viewport');
+        const stage = document.getElementById('stage') || document.querySelector('.viewport-wrapper');
         const pinInput = document.getElementById('pin-input');
         const connectBtn = document.getElementById('connect-btn');
         const rotateBtn = document.getElementById('rotate-btn');
@@ -638,17 +667,45 @@ class StreamServer(
 
         let rotationAngle = 0;
 
+        function updateLayout() {
+            const stageW = (stage ? stage.clientWidth : window.innerWidth) - 24;
+            const stageH = (stage ? stage.clientHeight : (window.innerHeight - 140)) - 24;
+            if (stageW <= 0 || stageH <= 0) return;
+
+            const natW = img.naturalWidth > 0 ? img.naturalWidth : 720;
+            const natH = img.naturalHeight > 0 ? img.naturalHeight : 1560;
+            const portraitAspect = natW / natH;
+
+            const isSideways = (rotationAngle === 90 || rotationAngle === 270);
+
+            if (!isSideways) {
+                const frameH = Math.min(stageH, stageW / portraitAspect);
+                const frameW = frameH * portraitAspect;
+                viewport.style.width = Math.round(frameW) + 'px';
+                viewport.style.height = Math.round(frameH) + 'px';
+                img.style.width = Math.round(frameW) + 'px';
+                img.style.height = Math.round(frameH) + 'px';
+            } else {
+                const landscapeAspect = 1 / portraitAspect;
+                const frameW = Math.min(stageW, stageH * landscapeAspect);
+                const frameH = frameW / landscapeAspect;
+                viewport.style.width = Math.round(frameW) + 'px';
+                viewport.style.height = Math.round(frameH) + 'px';
+                img.style.width = Math.round(frameH) + 'px';
+                img.style.height = Math.round(frameW) + 'px';
+            }
+
+            img.style.transform = 'rotate(' + rotationAngle + 'deg)';
+        }
+
+        img.addEventListener('load', updateLayout);
+        window.addEventListener('resize', updateLayout);
+        setTimeout(updateLayout, 150);
+
         function setRotation(deg) {
             rotationAngle = (deg % 360 + 360) % 360;
             rotateBtn.textContent = '↻ Rotar (' + rotationAngle + '°)';
-            img.style.transform = 'rotate(' + rotationAngle + 'deg)';
-            if (rotationAngle === 90 || rotationAngle === 270) {
-                img.style.maxHeight = '85vw';
-                img.style.maxWidth = '75vh';
-            } else {
-                img.style.maxHeight = '75vh';
-                img.style.maxWidth = '85vw';
-            }
+            updateLayout();
         }
 
         rotateBtn.onclick = () => {
@@ -659,11 +716,11 @@ class StreamServer(
             const pin = pinInput.value.trim();
             img.src = '/stream?pin=' + encodeURIComponent(pin) + '&t=' + Date.now();
             statusLabel.textContent = 'Transmisión activa con rotación de ' + rotationAngle + '°';
+            setTimeout(updateLayout, 200);
         }
 
         connectBtn.onclick = connect;
 
-        // Auto-detect PIN from URL parameter if present
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('pin')) {
             pinInput.value = urlParams.get('pin');
@@ -699,70 +756,129 @@ class StreamServer(
         }
 
         let isMouseDown = false;
-        let startPhoneX = 0, startPhoneY = 0;
+        let startClientX = 0, startClientY = 0;
         let downTime = 0;
 
-        img.addEventListener('mousedown', (e) => {
+        viewport.addEventListener('mousedown', (e) => {
             if (e.button !== 0) return;
+            e.preventDefault();
             isMouseDown = true;
             downTime = Date.now();
-            const rect = img.getBoundingClientRect();
-            const relX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            const relY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-            const p = mapToPhone(relX, relY);
-            startPhoneX = p.x;
-            startPhoneY = p.y;
+            startClientX = e.clientX;
+            startClientY = e.clientY;
             showRipple(e.clientX - viewport.getBoundingClientRect().left, e.clientY - viewport.getBoundingClientRect().top);
         });
 
         window.addEventListener('mouseup', (e) => {
             if (!isMouseDown) return;
             isMouseDown = false;
-            const rect = img.getBoundingClientRect();
-            const relX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            const relY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-            const p = mapToPhone(relX, relY);
+            const rect = viewport.getBoundingClientRect();
+            const startRelX = Math.max(0, Math.min(1, (startClientX - rect.left) / rect.width));
+            const startRelY = Math.max(0, Math.min(1, (startClientY - rect.top) / rect.height));
+            const endRelX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            const endRelY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
 
-            const dist = Math.hypot(p.x - startPhoneX, p.y - startPhoneY);
-            const duration = Math.min(600, Math.max(100, Date.now() - downTime));
+            const startP = mapToPhone(startRelX, startRelY);
+            const endP = mapToPhone(endRelX, endRelY);
+
+            const dist = Math.hypot(endP.x - startP.x, endP.y - startP.y);
+            const duration = Math.min(500, Math.max(100, Date.now() - downTime));
 
             if (dist < 0.02) {
-                sendTouch(1, p.x, p.y);
+                sendTouch(1, endP.x, endP.y);
             } else {
-                sendTouch(2, p.x, p.y, startPhoneX, startPhoneY, duration);
+                sendTouch(2, endP.x, endP.y, startP.x, startP.y, duration);
             }
         });
 
-        // Touch event support for tablets & phones
-        img.addEventListener('touchstart', (e) => {
+        // Mouse wheel scroll support with gesture throttling
+        let isWheelScrolling = false;
+        let wheelAccumulator = 0;
+
+        viewport.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            wheelAccumulator += e.deltaY;
+
+            if (isWheelScrolling) return;
+            if (Math.abs(wheelAccumulator) < 20) return;
+
+            const scrollDown = wheelAccumulator > 0;
+            wheelAccumulator = 0;
+            isWheelScrolling = true;
+
+            const rect = viewport.getBoundingClientRect();
+            const cursorRelX = Math.max(0.2, Math.min(0.8, (e.clientX - rect.left) / rect.width));
+            const cursorRelY = Math.max(0.25, Math.min(0.75, (e.clientY - rect.top) / rect.height));
+
+            const travel = 0.35;
+            let startRelY, endRelY;
+            if (scrollDown) {
+                startRelY = Math.min(0.85, cursorRelY + travel / 2);
+                endRelY = Math.max(0.15, startRelY - travel);
+            } else {
+                startRelY = Math.max(0.15, cursorRelY - travel / 2);
+                endRelY = Math.min(0.85, startRelY + travel);
+            }
+
+            const startP = mapToPhone(cursorRelX, startRelY);
+            const endP = mapToPhone(cursorRelX, endRelY);
+
+            statusLabel.textContent = scrollDown ? 'Desplazando hacia abajo...' : 'Desplazando hacia arriba...';
+            sendTouch(2, endP.x, endP.y, startP.x, startP.y, 220);
+
+            setTimeout(() => {
+                isWheelScrolling = false;
+            }, 280);
+        }, { passive: false });
+
+        // Keyboard navigation shortcuts
+        window.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+                e.preventDefault();
+                const startP = mapToPhone(0.5, 0.7);
+                const endP = mapToPhone(0.5, 0.3);
+                sendTouch(2, endP.x, endP.y, startP.x, startP.y, 220);
+            } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+                e.preventDefault();
+                const startP = mapToPhone(0.5, 0.3);
+                const endP = mapToPhone(0.5, 0.7);
+                sendTouch(2, endP.x, endP.y, startP.x, startP.y, 220);
+            } else if (e.key === 'Escape') {
+                sendKey(1);
+            }
+        });
+
+        // Touch event support for tablets & mobile browsers
+        viewport.addEventListener('touchstart', (e) => {
             if (e.touches.length === 1) {
                 const t = e.touches[0];
                 isMouseDown = true;
                 downTime = Date.now();
-                const rect = img.getBoundingClientRect();
-                const relX = Math.max(0, Math.min(1, (t.clientX - rect.left) / rect.width));
-                const relY = Math.max(0, Math.min(1, (t.clientY - rect.top) / rect.height));
-                const p = mapToPhone(relX, relY);
-                startPhoneX = p.x;
-                startPhoneY = p.y;
+                startClientX = t.clientX;
+                startClientY = t.clientY;
                 showRipple(t.clientX - viewport.getBoundingClientRect().left, t.clientY - viewport.getBoundingClientRect().top);
             }
         }, { passive: true });
 
-        img.addEventListener('touchend', (e) => {
+        viewport.addEventListener('touchend', (e) => {
             if (!isMouseDown) return;
             isMouseDown = false;
             const t = e.changedTouches[0];
-            const rect = img.getBoundingClientRect();
-            const relX = Math.max(0, Math.min(1, (t.clientX - rect.left) / rect.width));
-            const relY = Math.max(0, Math.min(1, (t.clientY - rect.top) / rect.height));
-            const p = mapToPhone(relX, relY);
-            const dist = Math.hypot(p.x - startPhoneX, p.y - startPhoneY);
-            const duration = Math.min(600, Math.max(100, Date.now() - downTime));
+            const rect = viewport.getBoundingClientRect();
+            const startRelX = Math.max(0, Math.min(1, (startClientX - rect.left) / rect.width));
+            const startRelY = Math.max(0, Math.min(1, (startClientY - rect.top) / rect.height));
+            const endRelX = Math.max(0, Math.min(1, (t.clientX - rect.left) / rect.width));
+            const endRelY = Math.max(0, Math.min(1, (t.clientY - rect.top) / rect.height));
+
+            const startP = mapToPhone(startRelX, startRelY);
+            const endP = mapToPhone(endRelX, endRelY);
+            const dist = Math.hypot(endP.x - startP.x, endP.y - startP.y);
+            const duration = Math.min(500, Math.max(100, Date.now() - downTime));
             if (dist < 0.02) {
-                sendTouch(1, p.x, p.y);
+                sendTouch(1, endP.x, endP.y);
             } else {
-                sendTouch(2, p.x, p.y, startPhoneX, startPhoneY, duration);
+                sendTouch(2, endP.x, endP.y, startP.x, startP.y, duration);
             }
         }, { passive: true });
 

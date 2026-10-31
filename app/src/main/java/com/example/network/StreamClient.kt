@@ -40,6 +40,9 @@ class StreamClient(
     private val _status = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     val status: StateFlow<ConnectionStatus> = _status.asStateFlow()
 
+    private val _lastError = MutableStateFlow<String?>(null)
+    val lastError: StateFlow<String?> = _lastError.asStateFlow()
+
     private val _currentFrame = MutableStateFlow<VideoFrame?>(null)
     val currentFrame: StateFlow<VideoFrame?> = _currentFrame.asStateFlow()
 
@@ -54,8 +57,9 @@ class StreamClient(
 
     fun connect(host: String, port: Int = Protocol.DEFAULT_PORT, pin: String = "") {
         disconnect()
+        _lastError.value = null
         _status.value = ConnectionStatus.CONNECTING
-        AppLogger.i(TAG, "Iniciando conexión hacia $host:$port...")
+        AppLogger.i(TAG, "Iniciando conexión hacia $host:$port (PIN: ${if (pin.isEmpty()) "ninguno" else "******"})...")
 
         readJob = scope.launch(Dispatchers.IO) {
             try {
@@ -63,9 +67,10 @@ class StreamClient(
                 s.tcpNoDelay = true
                 s.receiveBufferSize = 64 * 1024
                 s.sendBufferSize = 32 * 1024
-                s.connect(InetSocketAddress(host, port), 4000)
+                s.soTimeout = 10000 // 10 segundos timeout de lectura de socket
+                s.connect(InetSocketAddress(host, port), 5000)
                 socket = s
-                AppLogger.i(TAG, "Socket TCP conectado a $host:$port. Enviando PIN...")
+                AppLogger.i(TAG, "Socket TCP conectado a $host:$port. Enviando PIN de seguridad...")
 
                 val dis = DataInputStream(s.getInputStream())
                 val dos = DataOutputStream(s.getOutputStream())
@@ -83,7 +88,10 @@ class StreamClient(
                     val b1 = dis.readByte()
                     val b2 = dis.readByte()
                     if (b1 != Protocol.MAGIC_BYTE_1 || b2 != Protocol.MAGIC_BYTE_2) {
-                        AppLogger.w(TAG, "Encabezado de paquete inválido recibido del emisor")
+                        val headerErr = "Encabezado inválido recibido del emisor (b1=$b1, b2=$b2). Verifica que el emisor use la misma versión."
+                        AppLogger.w(TAG, headerErr)
+                        _lastError.value = headerErr
+                        _status.value = ConnectionStatus.ERROR
                         break
                     }
 
@@ -96,9 +104,12 @@ class StreamClient(
                             if (success) {
                                 isConnected.set(true)
                                 _status.value = ConnectionStatus.CONNECTED
-                                AppLogger.i(TAG, "Autenticado con éxito. Recibiendo pantalla en tiempo real.")
+                                _lastError.value = null
+                                AppLogger.i(TAG, "Autenticado con éxito con $host:$port. Recibiendo pantalla en tiempo real.")
                             } else {
-                                AppLogger.e(TAG, "Error: Autenticación rechazada. Verifica el PIN.")
+                                val pinErr = "PIN de seguridad incorrecto. Introduce el PIN de 6 dígitos que muestra el emisor."
+                                AppLogger.e(TAG, pinErr)
+                                _lastError.value = pinErr
                                 _status.value = ConnectionStatus.ERROR
                                 break
                             }
@@ -134,7 +145,14 @@ class StreamClient(
                     }
                 }
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Conexión interrumpida o cerrada: ${e.message}", e)
+                val err = when (e) {
+                    is java.net.SocketTimeoutException -> "Tiempo de espera agotado al comunicar con $host:$port (Revisa que la pantalla del emisor esté encendida)"
+                    is java.net.ConnectException -> "No se pudo conectar a $host:$port (Conexión rechazada. Presiona 'Iniciar Transmisión' en el emisor)"
+                    is java.net.NoRouteToHostException -> "Sin ruta hacia $host:$port (Comprueba que ambos dispositivos estén en la misma red Wi-Fi)"
+                    else -> "Fallo de conexión con $host:$port: ${e.message ?: e.javaClass.simpleName}"
+                }
+                AppLogger.e(TAG, err, e)
+                _lastError.value = err
                 if (_status.value != ConnectionStatus.DISCONNECTED) {
                     _status.value = ConnectionStatus.ERROR
                 }

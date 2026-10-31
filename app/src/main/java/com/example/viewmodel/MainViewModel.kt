@@ -84,6 +84,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val streamClient = StreamClient(viewModelScope)
     val receiverStatus: StateFlow<ConnectionStatus> = streamClient.status
+    val receiverLastError: StateFlow<String?> = streamClient.lastError
     val receiverFrame: StateFlow<VideoFrame?> = streamClient.currentFrame
     val receiverStats: StateFlow<StreamStats> = streamClient.stats
 

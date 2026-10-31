@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const host = params.get('ip') || '127.0.0.1';
   const pin = params.get('pin') || '';
 
+  const stage = document.getElementById('stage') || document.querySelector('.stage');
   const streamImg = document.getElementById('screen-stream');
   const frame = document.getElementById('phone-frame');
   const hostLabel = document.getElementById('host-label');
@@ -21,17 +22,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let rotationAngle = 0;
 
+  function updateLayout() {
+    const stageW = (stage ? stage.clientWidth : window.innerWidth) - 24;
+    const stageH = (stage ? stage.clientHeight : (window.innerHeight - 130)) - 24;
+    if (stageW <= 0 || stageH <= 0) return;
+
+    // Determine intrinsic aspect ratio (default 720x1560 portrait ~0.4615)
+    const natW = streamImg.naturalWidth > 0 ? streamImg.naturalWidth : 720;
+    const natH = streamImg.naturalHeight > 0 ? streamImg.naturalHeight : 1560;
+    const portraitAspect = natW / natH;
+
+    const isSideways = (rotationAngle === 90 || rotationAngle === 270);
+
+    if (!isSideways) {
+      // Portrait container (0° or 180°)
+      const frameH = Math.min(stageH, stageW / portraitAspect);
+      const frameW = frameH * portraitAspect;
+      frame.style.width = Math.round(frameW) + 'px';
+      frame.style.height = Math.round(frameH) + 'px';
+      streamImg.style.width = Math.round(frameW) + 'px';
+      streamImg.style.height = Math.round(frameH) + 'px';
+    } else {
+      // Landscape container (90° or 270°)
+      const landscapeAspect = 1 / portraitAspect;
+      const frameW = Math.min(stageW, stageH * landscapeAspect);
+      const frameH = frameW / landscapeAspect;
+      frame.style.width = Math.round(frameW) + 'px';
+      frame.style.height = Math.round(frameH) + 'px';
+      // When rotated 90/270deg, streamImg dimensions are inverted to match the container
+      streamImg.style.width = Math.round(frameH) + 'px';
+      streamImg.style.height = Math.round(frameW) + 'px';
+    }
+
+    streamImg.style.transform = `rotate(${rotationAngle}deg)`;
+  }
+
+  streamImg.addEventListener('load', updateLayout);
+  window.addEventListener('resize', updateLayout);
+  setTimeout(updateLayout, 150);
+
   function setRotation(deg) {
     rotationAngle = (deg % 360 + 360) % 360;
     btnRotate.textContent = `↻ Rotar (${rotationAngle}°)`;
-    streamImg.style.transform = `rotate(${rotationAngle}deg)`;
-    if (rotationAngle === 90 || rotationAngle === 270) {
-      streamImg.style.maxHeight = '85vw';
-      streamImg.style.maxWidth = '75vh';
-    } else {
-      streamImg.style.maxHeight = '85vh';
-      streamImg.style.maxWidth = '90vw';
-    }
+    updateLayout();
   }
 
   btnRotate.onclick = () => {
@@ -58,19 +91,16 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   let isMouseDown = false;
-  let startPhoneX = 0, startPhoneY = 0;
+  let startClientX = 0, startClientY = 0;
   let downTime = 0;
 
-  streamImg.addEventListener('mousedown', (e) => {
+  frame.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
+    e.preventDefault();
     isMouseDown = true;
     downTime = Date.now();
-    const rect = streamImg.getBoundingClientRect();
-    const relX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const relY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-    const p = mapToPhone(relX, relY);
-    startPhoneX = p.x;
-    startPhoneY = p.y;
+    startClientX = e.clientX;
+    startClientY = e.clientY;
 
     const frameRect = frame.getBoundingClientRect();
     createRipple(e.clientX - frameRect.left, e.clientY - frameRect.top);
@@ -79,18 +109,85 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('mouseup', (e) => {
     if (!isMouseDown) return;
     isMouseDown = false;
-    const rect = streamImg.getBoundingClientRect();
-    const relX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const relY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-    const p = mapToPhone(relX, relY);
+    const frameRect = frame.getBoundingClientRect();
+    const startRelX = Math.max(0, Math.min(1, (startClientX - frameRect.left) / frameRect.width));
+    const startRelY = Math.max(0, Math.min(1, (startClientY - frameRect.top) / frameRect.height));
+    const endRelX = Math.max(0, Math.min(1, (e.clientX - frameRect.left) / frameRect.width));
+    const endRelY = Math.max(0, Math.min(1, (e.clientY - frameRect.top) / frameRect.height));
 
-    const dist = Math.hypot(p.x - startPhoneX, p.y - startPhoneY);
-    const duration = Math.min(600, Math.max(100, Date.now() - downTime));
+    const startP = mapToPhone(startRelX, startRelY);
+    const endP = mapToPhone(endRelX, endRelY);
+
+    const dist = Math.hypot(endP.x - startP.x, endP.y - startP.y);
+    const duration = Math.min(500, Math.max(100, Date.now() - downTime));
 
     if (dist < 0.02) {
-      sendTouch(1, p.x, p.y);
+      sendTouch(1, endP.x, endP.y);
     } else {
-      sendTouch(2, p.x, p.y, startPhoneX, startPhoneY, duration);
+      sendTouch(2, endP.x, endP.y, startP.x, startP.y, duration);
+    }
+  });
+
+  // Mouse wheel scroll support with gesture throttling
+  let isWheelScrolling = false;
+  let wheelAccumulator = 0;
+
+  frame.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    wheelAccumulator += e.deltaY;
+
+    if (isWheelScrolling) return;
+    if (Math.abs(wheelAccumulator) < 20) return;
+
+    const scrollDown = wheelAccumulator > 0;
+    wheelAccumulator = 0;
+    isWheelScrolling = true;
+
+    const frameRect = frame.getBoundingClientRect();
+    const cursorRelX = Math.max(0.2, Math.min(0.8, (e.clientX - frameRect.left) / frameRect.width));
+    const cursorRelY = Math.max(0.25, Math.min(0.75, (e.clientY - frameRect.top) / frameRect.height));
+
+    // Scrolling down on page = swiping finger upwards on touch screen
+    const travel = 0.35;
+    let startRelY, endRelY;
+    if (scrollDown) {
+      startRelY = Math.min(0.85, cursorRelY + travel / 2);
+      endRelY = Math.max(0.15, startRelY - travel);
+    } else {
+      startRelY = Math.max(0.15, cursorRelY - travel / 2);
+      endRelY = Math.min(0.85, startRelY + travel);
+    }
+
+    const startP = mapToPhone(cursorRelX, startRelY);
+    const endP = mapToPhone(cursorRelX, endRelY);
+
+    if (statusLabel) {
+      statusLabel.textContent = scrollDown ? 'Desplazando hacia abajo...' : 'Desplazando hacia arriba...';
+    }
+
+    sendTouch(2, endP.x, endP.y, startP.x, startP.y, 220);
+
+    setTimeout(() => {
+      isWheelScrolling = false;
+    }, 280);
+  }, { passive: false });
+
+  // Keyboard navigation shortcuts (Arrow keys for scrolling, Escape for Back)
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+
+    if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+      e.preventDefault();
+      const startP = mapToPhone(0.5, 0.7);
+      const endP = mapToPhone(0.5, 0.3);
+      sendTouch(2, endP.x, endP.y, startP.x, startP.y, 220);
+    } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+      e.preventDefault();
+      const startP = mapToPhone(0.5, 0.3);
+      const endP = mapToPhone(0.5, 0.7);
+      sendTouch(2, endP.x, endP.y, startP.x, startP.y, 220);
+    } else if (e.key === 'Escape') {
+      sendKey(1);
     }
   });
 

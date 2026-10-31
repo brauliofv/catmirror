@@ -20,11 +20,11 @@ android {
     applicationId = "com.braulio.catmirror"
     minSdk = 24
     targetSdk = 36
-    versionCode = 2
+    versionCode = 4
     val buildTimestamp = SimpleDateFormat("yy/MM/dd-HH:mm", Locale.US).apply {
       timeZone = TimeZone.getTimeZone("UTC")
     }.format(Date())
-    versionName = "1.1 ($buildTimestamp)"
+    versionName = "1.2 ($buildTimestamp)"
     buildConfigField("String", "BUILD_TIME", "\"$buildTimestamp\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

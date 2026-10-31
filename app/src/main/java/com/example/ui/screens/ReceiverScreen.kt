@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -100,6 +101,7 @@ fun ReceiverScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
     var selectedDeviceForPin by remember { mutableStateOf<DiscoveredDevice?>(null) }
     var enteredPin by remember { mutableStateOf("") }
+    var showLogViewer by remember { mutableStateOf(false) }
 
     BackHandler {
         onNavigateBack()
@@ -129,6 +131,18 @@ fun ReceiverScreen(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Volver",
                             tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { showLogViewer = true },
+                        modifier = Modifier.testTag("receiver_logs_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Terminal,
+                            contentDescription = "Registro de diagnósticos",
+                            tint = CatAmberPrimary
                         )
                     }
                 },
@@ -546,6 +560,14 @@ fun ReceiverScreen(
                 }
             },
             containerColor = CatSlateSurface
+        )
+    }
+
+    if (showLogViewer) {
+        com.example.ui.components.LogViewerBottomSheet(
+            networkInfo = networkInfo,
+            isAccessibilityEnabled = false,
+            onDismiss = { showLogViewer = false }
         )
     }
 }

@@ -57,25 +57,32 @@
       justify-content: center;
       align-items: center;
       width: 100%;
+      height: calc(100vh - 130px);
       position: relative;
+      overflow: hidden;
+      padding: 8px;
     }
     .phone-frame {
       position: relative;
-      max-height: 85vh;
-      max-width: 90vw;
       background: #000;
-      border-radius: 20px;
+      border-radius: 18px;
       overflow: hidden;
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8), 0 0 0 2px rgba(0, 229, 255, 0.3);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8), 0 0 0 2px rgba(0, 229, 255, 0.35);
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: width 0.25s ease, height 0.25s ease;
+      cursor: grab;
+    }
+    .phone-frame:active {
+      cursor: grabbing;
     }
     #screen-stream {
       display: block;
-      max-height: 85vh;
-      max-width: 90vw;
-      cursor: crosshair;
+      user-select: none;
+      -webkit-user-drag: none;
+      pointer-events: auto;
+      transition: transform 0.25s ease;
     }
     .bottom-bar {
       height: 60px;
@@ -129,13 +136,13 @@
     </div>
   </header>
 
-  <div class="stage">
+  <div class="stage" id="stage">
     <div class="phone-frame" id="phone-frame">
-      <img id="screen-stream" alt="Pantalla remota" src="" />
+      <img id="screen-stream" alt="Pantalla remota" src="" draggable="false" />
     </div>
   </div>
 
-  <div style="font-size: 11px; color: #94A3B8; font-family: monospace; margin-bottom: 8px;" id="status-label">Haz clic para interactuar</div>
+  <div style="font-size: 11px; color: #94A3B8; font-family: monospace; margin-bottom: 8px;" id="status-label">Rueda del ratón o arrastrar para scroll • Clic para tocar</div>
 
   <div class="bottom-bar">
     <button class="nav-btn" id="btn-back">◀ Atrás</button>

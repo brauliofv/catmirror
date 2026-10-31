@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -67,6 +68,7 @@ import androidx.compose.ui.unit.sp
 import com.example.model.NetworkInfo
 import com.example.model.StreamStats
 import com.example.ui.components.AccessibilityGuideDialog
+import com.example.ui.components.LogViewerBottomSheet
 import com.example.ui.components.PulseLiveIndicator
 import com.example.ui.components.QrCodeCanvas
 import com.example.ui.components.StatChip
@@ -101,6 +103,7 @@ fun EmitterScreen(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     var showAccessibilityGuideDialog by remember { mutableStateOf(false) }
+    var showLogViewer by remember { mutableStateOf(false) }
 
     BackHandler {
         onNavigateBack()
@@ -174,6 +177,16 @@ fun EmitterScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = { showLogViewer = true },
+                        modifier = Modifier.testTag("emitter_logs_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Terminal,
+                            contentDescription = "Registro de diagnósticos",
+                            tint = CatAmberPrimary
+                        )
+                    }
                     PulseLiveIndicator(
                         isLive = isStreaming,
                         modifier = Modifier.padding(end = 16.dp)
@@ -635,6 +648,14 @@ fun EmitterScreen(
     if (showAccessibilityGuideDialog) {
         AccessibilityGuideDialog(
             onDismiss = { showAccessibilityGuideDialog = false }
+        )
+    }
+
+    if (showLogViewer) {
+        LogViewerBottomSheet(
+            networkInfo = networkInfo,
+            isAccessibilityEnabled = isAccessibilityEnabled,
+            onDismiss = { showLogViewer = false }
         )
     }
 }

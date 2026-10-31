@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -39,9 +40,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.example.model.NetworkInfo
+import com.example.ui.components.LogViewerBottomSheet
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -83,6 +87,8 @@ fun RemoteStreamScreen(
     frame: VideoFrame?,
     stats: StreamStats,
     isFitScreen: Boolean,
+    lastError: String? = null,
+    networkInfo: NetworkInfo = NetworkInfo(),
     onTouch: (action: Byte, xRatio: Float, yRatio: Float) -> Unit,
     onGlobalAction: (actionCode: Byte) -> Unit,
     onToggleFit: () -> Unit,
@@ -93,6 +99,7 @@ fun RemoteStreamScreen(
         onDisconnect()
     }
 
+    var showLogViewer by remember { mutableStateOf(false) }
     // Touch ripple visualization
     var touchFeedbackPos by remember { mutableStateOf<Offset?>(null) }
 
@@ -296,18 +303,36 @@ fun RemoteStreamScreen(
                     )
                 }
 
-                IconButton(
-                    onClick = onDisconnect,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .testTag("remote_disconnect_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Desconectar",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { showLogViewer = true },
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("remote_logs_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Terminal,
+                            contentDescription = "Registro de diagnósticos",
+                            tint = CatAmberPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    IconButton(
+                        onClick = onDisconnect,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("remote_disconnect_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Desconectar",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
         }
@@ -319,33 +344,93 @@ fun RemoteStreamScreen(
                 color = Color(0xDD0F141C)
             ) {
                 Column(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     if (status == ConnectionStatus.CONNECTING || status == ConnectionStatus.AUTHENTICATING) {
                         CircularProgressIndicator(color = CatCyanSecondary, modifier = Modifier.size(48.dp))
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(18.dp))
                         Text(
                             text = if (status == ConnectionStatus.CONNECTING) "Estableciendo conexión socket…" else "Verificando PIN de seguridad…",
                             style = MaterialTheme.typography.titleMedium.copy(color = Color.White, fontWeight = FontWeight.Bold)
                         )
-                    } else if (status == ConnectionStatus.ERROR) {
-                        Text(
-                            text = "Error de conexión con el dispositivo",
-                            style = MaterialTheme.typography.titleMedium.copy(color = CatCoralRed, fontWeight = FontWeight.Bold)
-                        )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Verifica que el emisor esté activo y el PIN sea correcto.",
+                            text = "Conectando al puerto 8888...",
                             style = MaterialTheme.typography.bodySmall.copy(color = CatTextSecondary)
                         )
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(24.dp))
                         Button(
                             onClick = onDisconnect,
-                            colors = ButtonDefaults.buttonColors(containerColor = CatCyanSecondary)
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF243242)),
+                            shape = RoundedCornerShape(10.dp)
                         ) {
-                            Text("Volver", color = Color.Black, fontWeight = FontWeight.Bold)
+                            Text("Cancelar", color = Color.White)
+                        }
+                    } else if (status == ConnectionStatus.ERROR) {
+                        Text(
+                            text = "Error de conexión con el emisor",
+                            style = MaterialTheme.typography.titleMedium.copy(color = CatCoralRed, fontWeight = FontWeight.Bold)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        if (!lastError.isNullOrBlank()) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0x33FF5252),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, CatCoralRed.copy(alpha = 0.5f))
+                            ) {
+                                Text(
+                                    text = lastError,
+                                    modifier = Modifier.padding(14.dp),
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = Color.White,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = "Asegúrate de que el emisor esté activo en la misma red y el PIN sea correcto.",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = CatTextSecondary,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Button(
+                                onClick = onDisconnect,
+                                colors = ButtonDefaults.buttonColors(containerColor = CatCyanSecondary),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("Volver", color = Color.Black, fontWeight = FontWeight.Bold)
+                            }
+
+                            OutlinedButton(
+                                onClick = { showLogViewer = true },
+                                shape = RoundedCornerShape(10.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, CatAmberPrimary)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Terminal,
+                                    contentDescription = null,
+                                    tint = CatAmberPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Ver Registro", color = CatAmberPrimary, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -419,6 +504,14 @@ fun RemoteStreamScreen(
                     )
                 }
             }
+        }
+
+        if (showLogViewer) {
+            LogViewerBottomSheet(
+                networkInfo = networkInfo,
+                isAccessibilityEnabled = false,
+                onDismiss = { showLogViewer = false }
+            )
         }
     }
 }

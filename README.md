@@ -108,12 +108,18 @@ Instala el archivo `catmirror.apk` en los dos teléfonos.
    ```
    *(o `http://127.0.0.1:8888` si usas cable USB con ADB).*
 3. Escribe el PIN de 6 dígitos y haz clic con el ratón sobre la pantalla para hacer tap, scroll y usar los botones de Inicio, Atrás y Recientes.
-4. **🎯 Confirmación de Control y Modo Ahorro (Pantalla Opaca):**
+4. **🖱️ Scroll y Navegación Remota:**
+   * **Rueda del ratón:** Gira la rueda del ratón hacia arriba o abajo sobre la pantalla para desplazarte de forma natural en cualquier aplicación (navegador, redes sociales, ajustes, listas).
+   * **Arrastrar con el ratón:** Haz clic sostenido y arrastra en cualquier dirección para deslizarte o navegar con gestos táctiles.
+   * **Teclas de flechas:** Usa las flechas `▲` / `▼` o `Re Pág` / `Av Pág` de tu teclado para scroll rápido, y `Esc` para el botón Atrás.
+5. **🔄 Rotación Adaptativa Instantánea (0°, 90°, 180°, 270°):**
+   * Al pulsar el botón **"↻ Rotar"**, el marco del visor se adapta automáticamente entre orientación vertical (9:16) y horizontal (16:9), adaptando la pantalla a tu monitor sin cortes en los bordes ni franjas negras desproporcionadas.
+   * Todos los clics, arrastres y scrolls con la rueda del ratón se recalculan con precisión matemática 1:1 en la orientación elegida.
+6. **🎯 Confirmación de Control y Modo Ahorro (Pantalla Opaca):**
    * En la pantalla del teléfono verás el botón **"🎯 Tocar aquí para Confirmar y Atenuar"**.
    * Haz clic sobre ese botón directamente desde el navegador o extensión en tu computadora: al recibir el tap remoto, el teléfono confirmará la conexión y bajará automáticamente el brillo de la pantalla física al 1% (modo opaco/ahorro de batería).
    * También puedes pulsar el botón **"🌙 Modo Ahorro"** en la barra superior del navegador/extensión para atenuar o restaurar el brillo del teléfono a distancia.
-   * En el teléfono, si necesitas ver la pantalla con brillo normal, solo pulsa **"☀️ Restaurar Brillo Normal"**.
-5. **Botón de Rotación ↻:** Si giras el teléfono o requieres cambiar la vista horizontal/vertical, pulsa el botón **"↻ Rotar"** en la barra superior para rotar la imagen a 90°, 180° o 270° manteniendo el mapeo exacto de los clics.
+   * *Nota sobre brillo al cambiar a otras apps (ej. Cámara):* Android protege la seguridad de la ventana activa asignando a cada app su propio brillo. Intentar forzar un filtro opaco oscuro del sistema (*system overlay*) provocaría que Android active su protección anti-tapjacking (`FLAG_WINDOW_IS_OBSCURED`), bloqueando por completo la inyección de toques remotos. Por ello, si necesitas bajar el brillo mientras usas la Cámara u otra app externa, se recomienda bajar el control deslizante de brillo desde el panel de ajustes rápidos del teléfono.
 
 ### Método B: Extensión para Google Chrome
 El proyecto incluye una extensión oficial en la carpeta `chrome-extension/`:
@@ -121,7 +127,7 @@ El proyecto incluye una extensión oficial en la carpeta `chrome-extension/`:
 2. Activa el interruptor **"Modo de desarrollador"** (en la esquina superior derecha).
 3. Haz clic en **"Cargar descomprimida"** (*Load unpacked*).
 4. Selecciona la carpeta `chrome-extension/` de este proyecto.
-5. Haz clic en el icono de **catmirror 🐱** en tu barra de extensiones de Chrome para abrir el visor interactivo con soporte de rotación de pantalla y control remoto.
+5. Haz clic en el icono de **catmirror 🐱** en tu barra de extensiones de Chrome para abrir el visor interactivo con rotación adaptativa, scroll con rueda del ratón y control remoto.
 
 ---
 
