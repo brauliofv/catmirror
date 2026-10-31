@@ -181,6 +181,134 @@ class ScreenStreamingService : Service() {
         }
     }
 
+    private var displayListener: DisplayManager.DisplayListener? = null
+    private var currentCaptureWidth = 0
+    private var currentCaptureHeight = 0
+    private var currentDensityDpi = 0
+    private val captureLock = Any()
+
+    private val orientationCheckRunnable = object : Runnable {
+        override fun run() {
+            if (_isStreaming.value) {
+                checkOrientationAndResize()
+                backgroundHandler?.postDelayed(this, 1200)
+            }
+        }
+    }
+
+    private fun calculateTargetDimensions(): Triple<Int, Int, Int> {
+        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val metrics = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        windowManager.defaultDisplay.getRealMetrics(metrics)
+
+        val rawW = if (metrics.widthPixels > 0) metrics.widthPixels else 1080
+        val rawH = if (metrics.heightPixels > 0) metrics.heightPixels else 2340
+        val rawDpi = if (metrics.densityDpi > 0) metrics.densityDpi else 400
+
+        val isLandscape = rawW > rawH
+        val shortDim = if (isLandscape) rawH else rawW
+        val longDim = if (isLandscape) rawW else rawH
+
+        // Escalar lado corto a 720p máximo para latencia óptima en Wi-Fi
+        val scale = (720f / shortDim).coerceAtMost(1f)
+        val scaledShort = ((shortDim * scale).toInt() / 2) * 2
+        val scaledLong = ((longDim * scale).toInt() / 2) * 2
+        val scaledDpi = (rawDpi * scale).toInt()
+
+        val targetWidth = if (isLandscape) scaledLong else scaledShort
+        val targetHeight = if (isLandscape) scaledShort else scaledLong
+
+        return Triple(targetWidth, targetHeight, scaledDpi)
+    }
+
+    private fun checkOrientationAndResize() {
+        if (!_isStreaming.value || mediaProjection == null) return
+        val (w, h, dpi) = calculateTargetDimensions()
+        if (w > 0 && h > 0 && (w != currentCaptureWidth || h != currentCaptureHeight)) {
+            reconfigureVirtualDisplay(w, h, dpi)
+        }
+    }
+
+    private fun reconfigureVirtualDisplay(newWidth: Int, newHeight: Int, newDpi: Int) {
+        val vDisplay = virtualDisplay ?: return
+        if (newWidth <= 0 || newHeight <= 0) return
+
+        synchronized(captureLock) {
+            try {
+                AppLogger.i(TAG, "Adaptando captura a orientación: ${newWidth}x${newHeight} ($newDpi dpi)")
+                val newReader = ImageReader.newInstance(newWidth, newHeight, PixelFormat.RGBA_8888, 2)
+                setupImageReaderListener(newReader, newWidth, newHeight)
+
+                vDisplay.resize(newWidth, newHeight, newDpi)
+                vDisplay.surface = newReader.surface
+
+                val oldReader = imageReader
+                imageReader = newReader
+                currentCaptureWidth = newWidth
+                currentCaptureHeight = newHeight
+                currentDensityDpi = newDpi
+
+                oldReader?.close()
+                AppLogger.i(TAG, "VirtualDisplay actualizado a ${newWidth}x${newHeight} con éxito")
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Error reconfigurando VirtualDisplay: ${e.message}", e)
+            }
+        }
+    }
+
+    private fun setupImageReaderListener(reader: ImageReader, width: Int, height: Int) {
+        reader.setOnImageAvailableListener({ r ->
+            synchronized(captureLock) {
+                if (r != imageReader) {
+                    try { r.acquireLatestImage()?.close() } catch (_: Exception) {}
+                    return@setOnImageAvailableListener
+                }
+                val image = try {
+                    r.acquireLatestImage()
+                } catch (_: Exception) {
+                    null
+                } ?: return@setOnImageAvailableListener
+
+                try {
+                    val planes = image.planes
+                    val buffer = planes[0].buffer
+                    val pixelStride = planes[0].pixelStride
+                    val rowStride = planes[0].rowStride
+                    val rowPadding = rowStride - pixelStride * width
+
+                    val bitmap = Bitmap.createBitmap(
+                        width + rowPadding / pixelStride,
+                        height,
+                        Bitmap.Config.ARGB_8888
+                    )
+                    bitmap.copyPixelsFromBuffer(buffer)
+
+                    val cleanBitmap = if (rowPadding > 0) {
+                        Bitmap.createBitmap(bitmap, 0, 0, width, height)
+                    } else {
+                        bitmap
+                    }
+
+                    val stream = ByteArrayOutputStream()
+                    cleanBitmap.compress(Bitmap.CompressFormat.JPEG, 65, stream)
+                    val jpegBytes = stream.toByteArray()
+
+                    onFrameCaptured?.invoke(width, height, System.currentTimeMillis(), jpegBytes)
+
+                    if (cleanBitmap != bitmap) {
+                        cleanBitmap.recycle()
+                    }
+                    bitmap.recycle()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error processing frame: ${e.message}")
+                } finally {
+                    image.close()
+                }
+            }
+        }, backgroundHandler)
+    }
+
     @SuppressLint("WrongConstant")
     private fun startMediaProjection(resultCode: Int, data: Intent) {
         try {
@@ -201,20 +329,16 @@ class ScreenStreamingService : Service() {
                 }
             }, backgroundHandler)
 
-            val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            val metrics = DisplayMetrics()
-            @Suppress("DEPRECATION")
-            windowManager.defaultDisplay.getRealMetrics(metrics)
-
-            // Scale resolution to 720p max to optimize Wi-Fi latency
-            val scale = (720f / metrics.widthPixels).coerceAtMost(1f)
-            val targetWidth = (metrics.widthPixels * scale).toInt() / 2 * 2
-            val targetHeight = (metrics.heightPixels * scale).toInt() / 2 * 2
-            val densityDpi = (metrics.densityDpi * scale).toInt()
+            val (targetWidth, targetHeight, densityDpi) = calculateTargetDimensions()
+            currentCaptureWidth = targetWidth
+            currentCaptureHeight = targetHeight
+            currentDensityDpi = densityDpi
 
             AppLogger.i(TAG, "Capturando pantalla real a ${targetWidth}x${targetHeight} ($densityDpi dpi)")
 
             imageReader = ImageReader.newInstance(targetWidth, targetHeight, PixelFormat.RGBA_8888, 2)
+            setupImageReaderListener(imageReader!!, targetWidth, targetHeight)
+
             virtualDisplay = mediaProjection?.createVirtualDisplay(
                 "CatMirrorDisplay",
                 targetWidth,
@@ -226,57 +350,31 @@ class ScreenStreamingService : Service() {
                 backgroundHandler
             )
 
-        imageReader?.setOnImageAvailableListener({ reader ->
-            val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
+            val displayManager = getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+            displayListener = object : DisplayManager.DisplayListener {
+                override fun onDisplayAdded(displayId: Int) {}
+                override fun onDisplayRemoved(displayId: Int) {}
+                override fun onDisplayChanged(displayId: Int) {
+                    if (displayId == android.view.Display.DEFAULT_DISPLAY) {
+                        checkOrientationAndResize()
+                    }
+                }
+            }
+            displayManager?.registerDisplayListener(displayListener, backgroundHandler)
+            backgroundHandler?.postDelayed(orientationCheckRunnable, 1200)
+
+            _isStreaming.value = true
             try {
-                val planes = image.planes
-                val buffer = planes[0].buffer
-                val pixelStride = planes[0].pixelStride
-                val rowStride = planes[0].rowStride
-                val rowPadding = rowStride - pixelStride * targetWidth
-
-                val bitmap = Bitmap.createBitmap(
-                    targetWidth + rowPadding / pixelStride,
-                    targetHeight,
-                    Bitmap.Config.ARGB_8888
-                )
-                bitmap.copyPixelsFromBuffer(buffer)
-
-                val cleanBitmap = if (rowPadding > 0) {
-                    Bitmap.createBitmap(bitmap, 0, 0, targetWidth, targetHeight)
-                } else {
-                    bitmap
+                if (wakeLock?.isHeld == false) {
+                    wakeLock?.acquire(12 * 60 * 60 * 1000L)
+                    AppLogger.i(TAG, "WakeLock adquirido (evita suspensión de CPU/Red)")
                 }
-
-                val stream = ByteArrayOutputStream()
-                cleanBitmap.compress(Bitmap.CompressFormat.JPEG, 65, stream)
-                val jpegBytes = stream.toByteArray()
-
-                onFrameCaptured?.invoke(targetWidth, targetHeight, System.currentTimeMillis(), jpegBytes)
-
-                if (cleanBitmap != bitmap) {
-                    cleanBitmap.recycle()
-                }
-                bitmap.recycle()
-            } catch (e: Exception) {
-                Log.w(TAG, "Error processing frame: ${e.message}")
-            } finally {
-                image.close()
-            }
-        }, backgroundHandler)
-
-        _isStreaming.value = true
-        try {
-            if (wakeLock?.isHeld == false) {
-                wakeLock?.acquire(12 * 60 * 60 * 1000L)
-                AppLogger.i(TAG, "WakeLock adquirido (evita suspensión de CPU/Red)")
-            }
-        } catch (_: Exception) {}
-    } catch (e: Exception) {
-        AppLogger.e(TAG, "Fallo al iniciar MediaProjection: ${e.message}", e)
-        startSimulatedStream()
+            } catch (_: Exception) {}
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Fallo al iniciar MediaProjection: ${e.message}", e)
+            startSimulatedStream()
+        }
     }
-}
 
     private fun startSimulatedStream() {
         simulationJob?.cancel()
@@ -363,10 +461,18 @@ class ScreenStreamingService : Service() {
         } catch (_: Exception) {}
 
         try {
+            backgroundHandler?.removeCallbacks(orientationCheckRunnable)
+            displayListener?.let {
+                val dm = getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+                dm?.unregisterDisplayListener(it)
+                displayListener = null
+            }
             virtualDisplay?.release()
             virtualDisplay = null
-            imageReader?.close()
-            imageReader = null
+            synchronized(captureLock) {
+                imageReader?.close()
+                imageReader = null
+            }
             mediaProjection?.stop()
             mediaProjection = null
         } catch (e: Exception) {

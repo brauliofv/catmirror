@@ -704,33 +704,31 @@ class StreamServer(
 
             const natW = img.naturalWidth > 0 ? img.naturalWidth : 720;
             const natH = img.naturalHeight > 0 ? img.naturalHeight : 1560;
-            const portraitAspect = natW / natH; // < 1 (e.g. 720/1560 = 0.4615)
 
             const isSideways = (rotationAngle === 90 || rotationAngle === 270);
 
+            // Relación de aspecto efectiva deseada en pantalla (ancho / alto):
+            const effectiveAspect = isSideways ? (natH / natW) : (natW / natH);
+
             let containerW, containerH;
+            if (effectiveAspect > (stageW / stageH)) {
+                // Limitado por el ancho disponible del navegador
+                containerW = stageW;
+                containerH = stageW / effectiveAspect;
+            } else {
+                // Limitado por la altura disponible del navegador
+                containerH = stageH;
+                containerW = stageH * effectiveAspect;
+            }
+
+            viewport.style.width = Math.round(containerW) + 'px';
+            viewport.style.height = Math.round(containerH) + 'px';
+
             if (!isSideways) {
-                // Modo Vertical (0° o 180°): relación natW / natH
-                containerH = Math.min(stageH, stageW / portraitAspect);
-                containerW = containerH * portraitAspect;
-
-                viewport.style.width = Math.round(containerW) + 'px';
-                viewport.style.height = Math.round(containerH) + 'px';
-
                 img.style.width = Math.round(containerW) + 'px';
                 img.style.height = Math.round(containerH) + 'px';
             } else {
-                // Modo Horizontal (90° o 270°): relación invertida natH / natW
-                const landscapeAspect = 1 / portraitAspect;
-                containerW = Math.min(stageW, stageH * landscapeAspect);
-                containerH = containerW / landscapeAspect;
-
-                viewport.style.width = Math.round(containerW) + 'px';
-                viewport.style.height = Math.round(containerH) + 'px';
-
-                // CORRECCIÓN CLAVE: Al rotar 90° o 270°, el ancho visual horizontal es el ALTO del elemento img,
-                // y la altura visual vertical es el ANCHO del elemento img.
-                // Invertimos el tamaño del elemento para que llene el contenedor al 100% sin barras negras ni cortes:
+                // Dimensiones invertidas para que la imagen rotada 90/270deg llene exactamente el marco
                 img.style.width = Math.round(containerH) + 'px';
                 img.style.height = Math.round(containerW) + 'px';
             }
@@ -746,6 +744,26 @@ class StreamServer(
         window.addEventListener('resize', updateLayout);
         setTimeout(updateLayout, 150);
 
+        let lastNatW = 0, lastNatH = 0;
+        setInterval(() => {
+            if (img.naturalWidth > 0 && (img.naturalWidth !== lastNatW || img.naturalHeight !== lastNatH)) {
+                const wasLandscape = (lastNatW > lastNatH);
+                const isNowLandscape = (img.naturalWidth > img.naturalHeight);
+                lastNatW = img.naturalWidth;
+                lastNatH = img.naturalHeight;
+
+                if (lastNatW > 0 && wasLandscape !== isNowLandscape) {
+                    if (isNowLandscape && (rotationAngle === 90 || rotationAngle === 270)) {
+                        setRotation(0);
+                    } else {
+                        updateLayout();
+                    }
+                } else {
+                    updateLayout();
+                }
+            }
+        }, 350);
+
         function setRotation(deg) {
             rotationAngle = (deg % 360 + 360) % 360;
             [0, 90, 180, 270].forEach(a => {
@@ -753,7 +771,8 @@ class StreamServer(
                 if (pill) pill.classList.toggle('active', a === rotationAngle);
             });
             const names = { 0: 'Vertical (0°)', 90: 'Horizontal (90°)', 180: 'Invertido (180°)', 270: 'Horizontal Invertido (270°)' };
-            statusLabel.textContent = 'Rotación: ' + (names[rotationAngle] || rotationAngle + '°');
+            const isHorizStream = (img.naturalWidth > img.naturalHeight);
+            statusLabel.textContent = (isHorizStream ? '📺 Pantalla Horizontal (' + img.naturalWidth + 'x' + img.naturalHeight + ')' : '📱 Pantalla Vertical (' + img.naturalWidth + 'x' + img.naturalHeight + ')') + ' • ' + (names[rotationAngle] || rotationAngle + '°');
             updateLayout();
         }
 

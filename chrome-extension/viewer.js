@@ -31,30 +31,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const stageH = (stage ? stage.clientHeight : (window.innerHeight - 130)) - 24;
     if (stageW <= 0 || stageH <= 0) return;
 
-    // Determine intrinsic aspect ratio (default 720x1560 portrait ~0.4615)
+    // Determine intrinsic aspect ratio
     const natW = streamImg.naturalWidth > 0 ? streamImg.naturalWidth : 720;
     const natH = streamImg.naturalHeight > 0 ? streamImg.naturalHeight : 1560;
-    const portraitAspect = natW / natH;
 
     const isSideways = (rotationAngle === 90 || rotationAngle === 270);
+    const effectiveAspect = isSideways ? (natH / natW) : (natW / natH);
 
     let containerW, containerH;
+    if (effectiveAspect > (stageW / stageH)) {
+      containerW = stageW;
+      containerH = stageW / effectiveAspect;
+    } else {
+      containerH = stageH;
+      containerW = stageH * effectiveAspect;
+    }
+
+    frame.style.width = Math.round(containerW) + 'px';
+    frame.style.height = Math.round(containerH) + 'px';
+
     if (!isSideways) {
-      // Modo Vertical (0° o 180°)
-      containerH = Math.min(stageH, stageW / portraitAspect);
-      containerW = containerH * portraitAspect;
-      frame.style.width = Math.round(containerW) + 'px';
-      frame.style.height = Math.round(containerH) + 'px';
       streamImg.style.width = Math.round(containerW) + 'px';
       streamImg.style.height = Math.round(containerH) + 'px';
     } else {
-      // Modo Horizontal (90° o 270°)
-      const landscapeAspect = 1 / portraitAspect;
-      containerW = Math.min(stageW, stageH * landscapeAspect);
-      containerH = containerW / landscapeAspect;
-      frame.style.width = Math.round(containerW) + 'px';
-      frame.style.height = Math.round(containerH) + 'px';
-      // Invertir dimensiones para que el elemento rotado 90/270deg llene el 100% del contenedor sin barras negras:
       streamImg.style.width = Math.round(containerH) + 'px';
       streamImg.style.height = Math.round(containerW) + 'px';
     }
@@ -70,6 +69,26 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('resize', updateLayout);
   setTimeout(updateLayout, 150);
 
+  let lastNatW = 0, lastNatH = 0;
+  setInterval(() => {
+    if (streamImg.naturalWidth > 0 && (streamImg.naturalWidth !== lastNatW || streamImg.naturalHeight !== lastNatH)) {
+      const wasLandscape = (lastNatW > lastNatH);
+      const isNowLandscape = (streamImg.naturalWidth > streamImg.naturalHeight);
+      lastNatW = streamImg.naturalWidth;
+      lastNatH = streamImg.naturalHeight;
+
+      if (lastNatW > 0 && wasLandscape !== isNowLandscape) {
+        if (isNowLandscape && (rotationAngle === 90 || rotationAngle === 270)) {
+          setRotation(0);
+        } else {
+          updateLayout();
+        }
+      } else {
+        updateLayout();
+      }
+    }
+  }, 350);
+
   function setRotation(deg) {
     rotationAngle = (deg % 360 + 360) % 360;
     [0, 90, 180, 270].forEach(a => {
@@ -77,8 +96,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (pill) pill.classList.toggle('active', a === rotationAngle);
     });
     const names = { 0: 'Vertical (0°)', 90: 'Horizontal (90°)', 180: 'Invertido (180°)', 270: 'Horizontal Invertido (270°)' };
+    const isHorizStream = (streamImg.naturalWidth > streamImg.naturalHeight);
     if (statusLabel) {
-      statusLabel.textContent = `Rotación: ${names[rotationAngle] || rotationAngle + '°'}`;
+      statusLabel.textContent = `${isHorizStream ? '📺 Pantalla Horizontal (' + streamImg.naturalWidth + 'x' + streamImg.naturalHeight + ')' : '📱 Pantalla Vertical (' + streamImg.naturalWidth + 'x' + streamImg.naturalHeight + ')'} • ${names[rotationAngle] || rotationAngle + '°'}`;
     }
     updateLayout();
   }
