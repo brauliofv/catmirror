@@ -126,6 +126,29 @@ fun RemoteStreamScreen(
             val containerWidth = maxWidth.value
             val containerHeight = maxHeight.value
 
+            fun mapToRatio(offset: Offset, canvasW: Float, canvasH: Float): Pair<Float, Float>? {
+                val bmp = currentBitmap
+                val imgW = bmp?.width?.toFloat() ?: frame?.width?.toFloat() ?: canvasW
+                val imgH = bmp?.height?.toFloat() ?: frame?.height?.toFloat() ?: canvasH
+                if (imgW <= 0f || imgH <= 0f || canvasW <= 0f || canvasH <= 0f) return null
+
+                val (destW, destH, destX, destY) = if (isFitScreen) {
+                    val scale = (canvasW / imgW).coerceAtMost(canvasH / imgH)
+                    val w = imgW * scale
+                    val h = imgH * scale
+                    listOf(w, h, (canvasW - w) / 2f, (canvasH - h) / 2f)
+                } else {
+                    listOf(canvasW, canvasH, 0f, 0f)
+                }
+
+                if (offset.x < destX || offset.x > destX + destW || offset.y < destY || offset.y > destY + destH) {
+                    return null
+                }
+                val rx = ((offset.x - destX) / destW).coerceIn(0f, 1f)
+                val ry = ((offset.y - destY) / destH).coerceIn(0f, 1f)
+                return Pair(rx, ry)
+            }
+
             // Interactive Video Canvas with Touch Injection
             Canvas(
                 modifier = Modifier
@@ -134,41 +157,46 @@ fun RemoteStreamScreen(
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onTap = { offset ->
-                                val xRatio = (offset.x / size.width).coerceIn(0f, 1f)
-                                val yRatio = (offset.y / size.height).coerceIn(0f, 1f)
                                 touchFeedbackPos = offset
-                                onTouch(Protocol.TOUCH_DOWN, xRatio, yRatio)
-                                onTouch(Protocol.TOUCH_UP, xRatio, yRatio)
+                                val coords = mapToRatio(offset, size.width.toFloat(), size.height.toFloat())
+                                if (coords != null) {
+                                    onTouch(Protocol.TOUCH_DOWN, coords.first, coords.second)
+                                    onTouch(Protocol.TOUCH_UP, coords.first, coords.second)
+                                }
                             }
                         )
                     }
                     .pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = { offset ->
-                                val xRatio = (offset.x / size.width).coerceIn(0f, 1f)
-                                val yRatio = (offset.y / size.height).coerceIn(0f, 1f)
                                 touchFeedbackPos = offset
-                                onTouch(Protocol.TOUCH_DOWN, xRatio, yRatio)
+                                val coords = mapToRatio(offset, size.width.toFloat(), size.height.toFloat())
+                                if (coords != null) {
+                                    onTouch(Protocol.TOUCH_DOWN, coords.first, coords.second)
+                                }
                             },
                             onDrag = { change, _ ->
                                 change.consume()
-                                val xRatio = (change.position.x / size.width).coerceIn(0f, 1f)
-                                val yRatio = (change.position.y / size.height).coerceIn(0f, 1f)
                                 touchFeedbackPos = change.position
-                                onTouch(Protocol.TOUCH_MOVE, xRatio, yRatio)
+                                val coords = mapToRatio(change.position, size.width.toFloat(), size.height.toFloat())
+                                if (coords != null) {
+                                    onTouch(Protocol.TOUCH_MOVE, coords.first, coords.second)
+                                }
                             },
                             onDragEnd = {
                                 touchFeedbackPos?.let { pos ->
-                                    val xRatio = (pos.x / size.width).coerceIn(0f, 1f)
-                                    val yRatio = (pos.y / size.height).coerceIn(0f, 1f)
-                                    onTouch(Protocol.TOUCH_UP, xRatio, yRatio)
+                                    val coords = mapToRatio(pos, size.width.toFloat(), size.height.toFloat())
+                                    if (coords != null) {
+                                        onTouch(Protocol.TOUCH_UP, coords.first, coords.second)
+                                    }
                                 }
                             },
                             onDragCancel = {
                                 touchFeedbackPos?.let { pos ->
-                                    val xRatio = (pos.x / size.width).coerceIn(0f, 1f)
-                                    val yRatio = (pos.y / size.height).coerceIn(0f, 1f)
-                                    onTouch(Protocol.TOUCH_UP, xRatio, yRatio)
+                                    val coords = mapToRatio(pos, size.width.toFloat(), size.height.toFloat())
+                                    if (coords != null) {
+                                        onTouch(Protocol.TOUCH_UP, coords.first, coords.second)
+                                    }
                                 }
                             }
                         )
@@ -223,117 +251,6 @@ fun RemoteStreamScreen(
             if (touchFeedbackPos != null) {
                 delay(300)
                 touchFeedbackPos = null
-            }
-        }
-
-        // Top Stats & Header Bar
-        Surface(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            shape = RoundedCornerShape(20.dp),
-            color = Color(0xCC111822),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x3300E5FF))
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .background(
-                                when (status) {
-                                    ConnectionStatus.CONNECTED -> CatNeonGreen
-                                    ConnectionStatus.CONNECTING, ConnectionStatus.AUTHENTICATING -> CatAmberPrimary
-                                    else -> CatCoralRed
-                                },
-                                CircleShape
-                            )
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = when (status) {
-                            ConnectionStatus.CONNECTED -> "EN VIVO"
-                            ConnectionStatus.CONNECTING -> "CONECTANDO…"
-                            ConnectionStatus.AUTHENTICATING -> "AUTENTICANDO…"
-                            ConnectionStatus.ERROR -> "ERROR"
-                            ConnectionStatus.DISCONNECTED -> "DESCONECTADO"
-                        },
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            letterSpacing = 1.sp
-                        )
-                    )
-                }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "${stats.latencyMs} ms",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = if (stats.latencyMs < 60) CatNeonGreen else CatAmberPrimary
-                        )
-                    )
-                    Text(
-                        text = "${stats.fps} fps",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = CatCyanSecondary
-                        )
-                    )
-                    Text(
-                        text = "${stats.bitrateKbps} kbps",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = FontFamily.Monospace,
-                            color = CatTextSecondary
-                        )
-                    )
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = { showLogViewer = true },
-                        modifier = Modifier
-                            .size(32.dp)
-                            .testTag("remote_logs_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Terminal,
-                            contentDescription = "Registro de diagnósticos",
-                            tint = CatAmberPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    IconButton(
-                        onClick = onDisconnect,
-                        modifier = Modifier
-                            .size(32.dp)
-                            .testTag("remote_disconnect_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Desconectar",
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
             }
         }
 
@@ -501,6 +418,32 @@ fun RemoteStreamScreen(
                         contentDescription = if (isFitScreen) "Modo Ajustar" else "Modo Llenar",
                         tint = if (isFitScreen) CatNeonGreen else CatTextMuted,
                         modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Diagnostics log button
+                IconButton(
+                    onClick = { showLogViewer = true },
+                    modifier = Modifier.testTag("remote_logs_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Terminal,
+                        contentDescription = "Registro de diagnósticos",
+                        tint = CatAmberPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Disconnect button
+                IconButton(
+                    onClick = onDisconnect,
+                    modifier = Modifier.testTag("remote_disconnect_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Desconectar",
+                        tint = CatCoralRed,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }

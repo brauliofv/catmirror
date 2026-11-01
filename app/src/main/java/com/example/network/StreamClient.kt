@@ -68,10 +68,11 @@ class StreamClient(
             try {
                 val s = Socket()
                 s.tcpNoDelay = true
+                s.keepAlive = true
                 s.receiveBufferSize = 256 * 1024
                 s.sendBufferSize = 64 * 1024
-                s.soTimeout = 20000 // 20 segundos timeout de lectura de socket
-                s.connect(InetSocketAddress(host, port), 5000)
+                s.soTimeout = 0 // Sin timeout de lectura arbitrario; la conexión permanece abierta durante el streaming
+                s.connect(InetSocketAddress(host, port), 6000)
                 socket = s
                 AppLogger.i(TAG, "Socket TCP conectado a $host:$port. Enviando PIN de seguridad...")
 
@@ -150,6 +151,7 @@ class StreamClient(
                 }
             } catch (e: Exception) {
                 val err = when (e) {
+                    is java.io.EOFException -> "El emisor finalizó la transmisión o se cerró la conexión remota"
                     is java.net.SocketTimeoutException -> "Tiempo de espera agotado al comunicar con $host:$port (Revisa que la pantalla del emisor esté encendida)"
                     is java.net.ConnectException -> "No se pudo conectar a $host:$port (Conexión rechazada. Presiona 'Iniciar Transmisión' en el emisor)"
                     is java.net.NoRouteToHostException -> "Sin ruta hacia $host:$port (Comprueba que ambos dispositivos estén en la misma red Wi-Fi)"
@@ -183,37 +185,43 @@ class StreamClient(
     }
 
     private fun startPingJob() {
+        pingJob?.cancel()
         pingJob = scope.launch(Dispatchers.IO) {
-            while (isActive && isConnected.get()) {
+            while (isActive && _status.value != ConnectionStatus.DISCONNECTED && _status.value != ConnectionStatus.ERROR) {
                 delay(1500)
-                try {
-                    synchronized(writeLock) {
-                        val out = outputStream
-                        if (out != null) {
-                            Protocol.writePing(out, System.currentTimeMillis())
+                if (isConnected.get()) {
+                    try {
+                        synchronized(writeLock) {
+                            val out = outputStream
+                            if (out != null) {
+                                Protocol.writePing(out, System.currentTimeMillis())
+                            }
                         }
-                    }
-                } catch (_: Exception) {}
+                    } catch (_: Exception) {}
+                }
             }
         }
     }
 
     private fun startStatsJob() {
+        statsJob?.cancel()
         statsJob = scope.launch(Dispatchers.Default) {
-            while (isActive && isConnected.get()) {
+            while (isActive && _status.value != ConnectionStatus.DISCONNECTED && _status.value != ConnectionStatus.ERROR) {
                 delay(1000)
-                val fps = framesReceivedInSecond.getAndSet(0)
-                val bytes = bytesReceivedInSecond.getAndSet(0L)
-                val kbps = (bytes * 8) / 1024
+                if (isConnected.get()) {
+                    val fps = framesReceivedInSecond.getAndSet(0)
+                    val bytes = bytesReceivedInSecond.getAndSet(0L)
+                    val kbps = (bytes * 8) / 1024
 
-                _stats.value = _stats.value.copy(
-                    fps = fps,
-                    bitrateKbps = kbps,
-                    latencyMs = currentLatencyMs.get(),
-                    framesTransmitted = totalFramesCounter.get(),
-                    resolutionWidth = _currentFrame.value?.width ?: 0,
-                    resolutionHeight = _currentFrame.value?.height ?: 0
-                )
+                    _stats.value = _stats.value.copy(
+                        fps = fps,
+                        bitrateKbps = kbps,
+                        latencyMs = currentLatencyMs.get(),
+                        framesTransmitted = totalFramesCounter.get(),
+                        resolutionWidth = _currentFrame.value?.width ?: 0,
+                        resolutionHeight = _currentFrame.value?.height ?: 0
+                    )
+                }
             }
         }
     }

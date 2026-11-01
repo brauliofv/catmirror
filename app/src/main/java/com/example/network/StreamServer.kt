@@ -377,9 +377,10 @@ class StreamServer(
             var dis: DataInputStream? = null
             try {
                 socket.tcpNoDelay = true
+                socket.keepAlive = true
                 socket.sendBufferSize = 256 * 1024
                 socket.receiveBufferSize = 64 * 1024
-                socket.soTimeout = 30000
+                socket.soTimeout = 0 // Sin timeout de lectura; los pings y keepAlive mantienen la conexión activa
                 dos = DataOutputStream(socket.getOutputStream())
                 dis = DataInputStream(bis)
 
