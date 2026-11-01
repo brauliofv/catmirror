@@ -363,8 +363,6 @@ class StreamServer(
     ) : ClientSession {
         private var _auth = false
         override val isAuthenticated: Boolean get() = _auth
-        private var lastTouchX = 0f
-        private var lastTouchY = 0f
         private var latestFrame: VideoFrame? = null
         private val writeLock = Any()
 
@@ -469,21 +467,45 @@ class StreamServer(
             }
         }
 
+        private var touchStartX = 0f
+        private var touchStartY = 0f
+        private var touchLastX = 0f
+        private var touchLastY = 0f
+        private var isDragGesture = false
+
         private fun handleTouch(action: Byte, xRatio: Float, yRatio: Float) {
             val a11y = CatMirrorAccessibilityService.getInstance() ?: return
             when (action) {
                 Protocol.TOUCH_DOWN -> {
-                    lastTouchX = xRatio
-                    lastTouchY = yRatio
-                    a11y.injectTap(xRatio, yRatio)
+                    touchStartX = xRatio
+                    touchStartY = yRatio
+                    touchLastX = xRatio
+                    touchLastY = yRatio
+                    isDragGesture = false
                 }
                 Protocol.TOUCH_MOVE -> {
-                    val dist = Math.hypot((xRatio - lastTouchX).toDouble(), (yRatio - lastTouchY).toDouble())
-                    if (dist > 0.02) {
-                        a11y.injectDrag(lastTouchX, lastTouchY, xRatio, yRatio, 60)
-                        lastTouchX = xRatio
-                        lastTouchY = yRatio
+                    val totalDist = Math.hypot((xRatio - touchStartX).toDouble(), (yRatio - touchStartY).toDouble())
+                    if (totalDist > 0.015) {
+                        isDragGesture = true
                     }
+                    val stepDist = Math.hypot((xRatio - touchLastX).toDouble(), (yRatio - touchLastY).toDouble())
+                    if (stepDist > 0.02) {
+                        a11y.injectDrag(touchLastX, touchLastY, xRatio, yRatio, 60)
+                        touchLastX = xRatio
+                        touchLastY = yRatio
+                    }
+                }
+                Protocol.TOUCH_UP -> {
+                    if (!isDragGesture) {
+                        // Tap de alta precisión en la posición exacta
+                        a11y.injectTap(touchStartX, touchStartY)
+                    } else {
+                        val finalDist = Math.hypot((xRatio - touchLastX).toDouble(), (yRatio - touchLastY).toDouble())
+                        if (finalDist > 0.01) {
+                            a11y.injectDrag(touchLastX, touchLastY, xRatio, yRatio, 60)
+                        }
+                    }
+                    isDragGesture = false
                 }
             }
         }

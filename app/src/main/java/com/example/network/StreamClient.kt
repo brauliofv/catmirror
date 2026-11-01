@@ -150,6 +150,14 @@ class StreamClient(
                     }
                 }
             } catch (e: Exception) {
+                if (_status.value == ConnectionStatus.DISCONNECTED || !isActive || (socket?.isClosed == true)) {
+                    AppLogger.i(TAG, "Conexión con $host:$port finalizada con éxito")
+                    return@launch
+                }
+                if (e is java.net.SocketException && (e.message?.contains("Socket closed", ignoreCase = true) == true)) {
+                    AppLogger.i(TAG, "Conexión remota finalizada por el usuario")
+                    return@launch
+                }
                 val err = when (e) {
                     is java.io.EOFException -> "El emisor finalizó la transmisión o se cerró la conexión remota"
                     is java.net.SocketTimeoutException -> "Tiempo de espera agotado al comunicar con $host:$port (Revisa que la pantalla del emisor esté encendida)"

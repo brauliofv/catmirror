@@ -7,8 +7,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -30,6 +31,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Terminal
@@ -56,10 +59,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -120,86 +125,69 @@ fun RemoteStreamScreen(
             .background(Color.Black)
             .testTag("remote_stream_screen")
     ) {
+        var renderedRect by remember { mutableStateOf<Rect?>(null) }
+        var isControlBarExpanded by remember { mutableStateOf(false) }
+
         BoxWithConstraints(
             modifier = Modifier.fillMaxSize()
         ) {
-            val containerWidth = maxWidth.value
-            val containerHeight = maxHeight.value
-
-            fun mapToRatio(offset: Offset, canvasW: Float, canvasH: Float): Pair<Float, Float>? {
-                val bmp = currentBitmap
-                val imgW = bmp?.width?.toFloat() ?: frame?.width?.toFloat() ?: canvasW
-                val imgH = bmp?.height?.toFloat() ?: frame?.height?.toFloat() ?: canvasH
-                if (imgW <= 0f || imgH <= 0f || canvasW <= 0f || canvasH <= 0f) return null
-
-                val (destW, destH, destX, destY) = if (isFitScreen) {
-                    val scale = (canvasW / imgW).coerceAtMost(canvasH / imgH)
-                    val w = imgW * scale
-                    val h = imgH * scale
-                    listOf(w, h, (canvasW - w) / 2f, (canvasH - h) / 2f)
+            fun calculateNormalizedCoords(offset: Offset, canvasW: Float, canvasH: Float): Pair<Float, Float> {
+                val rect = renderedRect
+                return if (rect != null && rect.width > 0f && rect.height > 0f && isFitScreen) {
+                    val xRatio = ((offset.x - rect.left) / rect.width).coerceIn(0f, 1f)
+                    val yRatio = ((offset.y - rect.top) / rect.height).coerceIn(0f, 1f)
+                    Pair(xRatio, yRatio)
                 } else {
-                    listOf(canvasW, canvasH, 0f, 0f)
+                    val xRatio = (offset.x / canvasW).coerceIn(0f, 1f)
+                    val yRatio = (offset.y / canvasH).coerceIn(0f, 1f)
+                    Pair(xRatio, yRatio)
                 }
-
-                if (offset.x < destX || offset.x > destX + destW || offset.y < destY || offset.y > destY + destH) {
-                    return null
-                }
-                val rx = ((offset.x - destX) / destW).coerceIn(0f, 1f)
-                val ry = ((offset.y - destY) / destH).coerceIn(0f, 1f)
-                return Pair(rx, ry)
             }
 
-            // Interactive Video Canvas with Touch Injection
+            // Interactive Video Canvas with Unified Touch & Drag Detection
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
                     .testTag("remote_video_canvas")
                     .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = { offset ->
-                                touchFeedbackPos = offset
-                                val coords = mapToRatio(offset, size.width.toFloat(), size.height.toFloat())
-                                if (coords != null) {
-                                    onTouch(Protocol.TOUCH_DOWN, coords.first, coords.second)
-                                    onTouch(Protocol.TOUCH_UP, coords.first, coords.second)
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val canvasW = size.width.toFloat()
+                            val canvasH = size.height.toFloat()
+                            val startPos = down.position
+                            touchFeedbackPos = startPos
+
+                            val (startX, startY) = calculateNormalizedCoords(startPos, canvasW, canvasH)
+                            onTouch(Protocol.TOUCH_DOWN, startX, startY)
+
+                            var isDragging = false
+                            var lastPos = startPos
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                                if (change.changedToUp()) {
+                                    change.consume()
+                                    val (upX, upY) = calculateNormalizedCoords(change.position, canvasW, canvasH)
+                                    onTouch(Protocol.TOUCH_UP, upX, upY)
+                                    break
+                                }
+
+                                val dist = (change.position - startPos).getDistance()
+                                if (!isDragging && dist > viewConfiguration.touchSlop) {
+                                    isDragging = true
+                                }
+
+                                if (isDragging) {
+                                    change.consume()
+                                    lastPos = change.position
+                                    touchFeedbackPos = lastPos
+                                    val (curX, curY) = calculateNormalizedCoords(lastPos, canvasW, canvasH)
+                                    onTouch(Protocol.TOUCH_MOVE, curX, curY)
                                 }
                             }
-                        )
-                    }
-                    .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragStart = { offset ->
-                                touchFeedbackPos = offset
-                                val coords = mapToRatio(offset, size.width.toFloat(), size.height.toFloat())
-                                if (coords != null) {
-                                    onTouch(Protocol.TOUCH_DOWN, coords.first, coords.second)
-                                }
-                            },
-                            onDrag = { change, _ ->
-                                change.consume()
-                                touchFeedbackPos = change.position
-                                val coords = mapToRatio(change.position, size.width.toFloat(), size.height.toFloat())
-                                if (coords != null) {
-                                    onTouch(Protocol.TOUCH_MOVE, coords.first, coords.second)
-                                }
-                            },
-                            onDragEnd = {
-                                touchFeedbackPos?.let { pos ->
-                                    val coords = mapToRatio(pos, size.width.toFloat(), size.height.toFloat())
-                                    if (coords != null) {
-                                        onTouch(Protocol.TOUCH_UP, coords.first, coords.second)
-                                    }
-                                }
-                            },
-                            onDragCancel = {
-                                touchFeedbackPos?.let { pos ->
-                                    val coords = mapToRatio(pos, size.width.toFloat(), size.height.toFloat())
-                                    if (coords != null) {
-                                        onTouch(Protocol.TOUCH_UP, coords.first, coords.second)
-                                    }
-                                }
-                            }
-                        )
+                        }
                     }
             ) {
                 val canvasW = size.width
@@ -220,6 +208,8 @@ fun RemoteStreamScreen(
                         listOf(canvasW, canvasH, 0f, 0f)
                     }
 
+                    renderedRect = Rect(destX, destY, destX + destW, destY + destH)
+
                     drawImage(
                         image = currentBitmap.asImageBitmap(),
                         dstOffset = IntOffset(destX.toInt(), destY.toInt()),
@@ -234,12 +224,12 @@ fun RemoteStreamScreen(
                 touchFeedbackPos?.let { pos ->
                     drawCircle(
                         color = CatAmberPrimary.copy(alpha = 0.5f),
-                        radius = 32f,
+                        radius = 28f,
                         center = pos
                     )
                     drawCircle(
                         color = Color.White,
-                        radius = 12f,
+                        radius = 10f,
                         center = pos
                     )
                 }
@@ -354,97 +344,162 @@ fun RemoteStreamScreen(
             }
         }
 
-        // Floating Bottom Remote Navigation Bar (Back, Home, Recents, Aspect Ratio)
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(bottom = 12.dp),
-            shape = RoundedCornerShape(24.dp),
-            color = Color(0xDD151F2C),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x33FF9E2C))
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Back button
-                IconButton(
-                    onClick = { onGlobalAction(Protocol.GLOBAL_BACK) },
-                    modifier = Modifier.testTag("remote_back_action_button")
+        // Floating Remote Navigation Bar (Collapsible / Non-intrusive)
+        if (status == ConnectionStatus.CONNECTED) {
+            if (isControlBarExpanded) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = 12.dp)
+                        .testTag("remote_control_bar_expanded"),
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color(0xEE151F2C),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x33FF9E2C))
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Atrás Remoto",
-                        tint = CatAmberPrimary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Collapse button
+                        IconButton(
+                            onClick = { isControlBarExpanded = false },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Ocultar Controles",
+                                tint = CatTextMuted,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
 
-                // Home button
-                IconButton(
-                    onClick = { onGlobalAction(Protocol.GLOBAL_HOME) },
-                    modifier = Modifier.testTag("remote_home_action_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Home,
-                        contentDescription = "Inicio Remoto",
-                        tint = CatCyanSecondary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
+                        // Back button
+                        IconButton(
+                            onClick = { onGlobalAction(Protocol.GLOBAL_BACK) },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("remote_back_action_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Atrás Remoto",
+                                tint = CatAmberPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
 
-                // Recents button
-                IconButton(
-                    onClick = { onGlobalAction(Protocol.GLOBAL_RECENTS) },
-                    modifier = Modifier.testTag("remote_recents_action_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Layers,
-                        contentDescription = "Apps Recientes",
-                        tint = CatAmberPrimary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+                        // Home button
+                        IconButton(
+                            onClick = { onGlobalAction(Protocol.GLOBAL_HOME) },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("remote_home_action_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Home,
+                                contentDescription = "Inicio Remoto",
+                                tint = CatCyanSecondary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
 
-                // Aspect ratio toggle
-                IconButton(
-                    onClick = onToggleFit,
-                    modifier = Modifier.testTag("remote_fit_toggle_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AspectRatio,
-                        contentDescription = if (isFitScreen) "Modo Ajustar" else "Modo Llenar",
-                        tint = if (isFitScreen) CatNeonGreen else CatTextMuted,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                        // Recents button
+                        IconButton(
+                            onClick = { onGlobalAction(Protocol.GLOBAL_RECENTS) },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("remote_recents_action_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Layers,
+                                contentDescription = "Apps Recientes",
+                                tint = CatAmberPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
 
-                // Diagnostics log button
-                IconButton(
-                    onClick = { showLogViewer = true },
-                    modifier = Modifier.testTag("remote_logs_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Terminal,
-                        contentDescription = "Registro de diagnósticos",
-                        tint = CatAmberPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                        // Aspect ratio toggle
+                        IconButton(
+                            onClick = onToggleFit,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("remote_fit_toggle_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AspectRatio,
+                                contentDescription = if (isFitScreen) "Modo Ajustar" else "Modo Llenar",
+                                tint = if (isFitScreen) CatNeonGreen else CatTextMuted,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
 
-                // Disconnect button
-                IconButton(
-                    onClick = onDisconnect,
-                    modifier = Modifier.testTag("remote_disconnect_button")
+                        // Diagnostics log button
+                        IconButton(
+                            onClick = { showLogViewer = true },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("remote_logs_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Terminal,
+                                contentDescription = "Registro de diagnósticos",
+                                tint = CatAmberPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        // Disconnect button
+                        IconButton(
+                            onClick = onDisconnect,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("remote_disconnect_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Desconectar",
+                                tint = CatCoralRed,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Collapsed Minimal Floating Pill - Pinned at bottom right, completely out of the way
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .navigationBarsPadding()
+                        .padding(end = 16.dp, bottom = 16.dp)
+                        .testTag("remote_control_bar_collapsed"),
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xCC151F2C),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x5500E5FF)),
+                    shadowElevation = 6.dp
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Desconectar",
-                        tint = CatCoralRed,
-                        modifier = Modifier.size(22.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .clickable { isControlBarExpanded = true }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowUp,
+                            contentDescription = "Mostrar Controles",
+                            tint = CatCyanSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "Controles",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
                 }
             }
         }
