@@ -366,6 +366,7 @@ class StreamServer(
         private var lastTouchX = 0f
         private var lastTouchY = 0f
         private var latestFrame: VideoFrame? = null
+        private val writeLock = Any()
 
         override fun enqueue(width: Int, height: Int, timestamp: Long, jpegData: ByteArray) {
             latestFrame = VideoFrame(width, height, timestamp, jpegData)
@@ -375,7 +376,10 @@ class StreamServer(
             var dos: DataOutputStream? = null
             var dis: DataInputStream? = null
             try {
-                socket.soTimeout = 15000
+                socket.tcpNoDelay = true
+                socket.sendBufferSize = 256 * 1024
+                socket.receiveBufferSize = 64 * 1024
+                socket.soTimeout = 30000
                 dos = DataOutputStream(socket.getOutputStream())
                 dis = DataInputStream(bis)
 
@@ -399,7 +403,9 @@ class StreamServer(
                                     val receivedPin = String(pinBytes, Charsets.UTF_8)
                                     val valid = (currentPin.isEmpty() || receivedPin == currentPin)
                                     _auth = valid
-                                    Protocol.writeAuthResponse(dos, valid)
+                                    synchronized(writeLock) {
+                                        Protocol.writeAuthResponse(dos, valid)
+                                    }
                                     if (valid) {
                                         AppLogger.i(TAG, "Receptor Android $clientIp autenticado con éxito")
                                         onClientConnected(clientIp)
@@ -420,7 +426,9 @@ class StreamServer(
                                 }
                                 Protocol.TYPE_PING -> {
                                     val ts = dis.readLong()
-                                    Protocol.writePong(dos, ts)
+                                    synchronized(writeLock) {
+                                        Protocol.writePong(dos, ts)
+                                    }
                                 }
                                 else -> {
                                     if (payloadLen > 0) dis.skipBytes(payloadLen)
@@ -441,7 +449,9 @@ class StreamServer(
                     if (frame != null && _auth) {
                         latestFrame = null
                         try {
-                            Protocol.writeFrame(dos, frame.width, frame.height, frame.timestamp, frame.jpegData)
+                            synchronized(writeLock) {
+                                Protocol.writeFrame(dos, frame.width, frame.height, frame.timestamp, frame.jpegData)
+                            }
                         } catch (e: Exception) {
                             AppLogger.i(TAG, "Error enviando frame a $clientIp: ${e.message}")
                             break

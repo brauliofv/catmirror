@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.EOFException
@@ -54,6 +56,7 @@ class StreamClient(
     private val bytesReceivedInSecond = AtomicLong(0L)
     private val totalFramesCounter = AtomicLong(0L)
     private val currentLatencyMs = AtomicLong(0L)
+    private val writeLock = Any()
 
     fun connect(host: String, port: Int = Protocol.DEFAULT_PORT, pin: String = "") {
         disconnect()
@@ -65,22 +68,23 @@ class StreamClient(
             try {
                 val s = Socket()
                 s.tcpNoDelay = true
-                s.receiveBufferSize = 64 * 1024
-                s.sendBufferSize = 32 * 1024
-                s.soTimeout = 10000 // 10 segundos timeout de lectura de socket
+                s.receiveBufferSize = 256 * 1024
+                s.sendBufferSize = 64 * 1024
+                s.soTimeout = 20000 // 20 segundos timeout de lectura de socket
                 s.connect(InetSocketAddress(host, port), 5000)
                 socket = s
                 AppLogger.i(TAG, "Socket TCP conectado a $host:$port. Enviando PIN de seguridad...")
 
-                val dis = DataInputStream(s.getInputStream())
-                val dos = DataOutputStream(s.getOutputStream())
+                val dis = DataInputStream(BufferedInputStream(s.getInputStream(), 256 * 1024))
+                val dos = DataOutputStream(BufferedOutputStream(s.getOutputStream(), 64 * 1024))
                 outputStream = dos
 
                 _status.value = ConnectionStatus.AUTHENTICATING
-                Protocol.writeAuth(dos, pin)
+                synchronized(writeLock) {
+                    Protocol.writeAuth(dos, pin)
+                }
 
-                // Start outgoing writer job
-                startWriter()
+                // Start outgoing ping & stats jobs
                 startPingJob()
                 startStatsJob()
 
@@ -115,8 +119,8 @@ class StreamClient(
                             }
                         }
                         Protocol.TYPE_FRAME -> {
-                            val width = dis.readShort().toInt()
-                            val height = dis.readShort().toInt()
+                            val width = dis.readUnsignedShort()
+                            val height = dis.readUnsignedShort()
                             val timestamp = dis.readLong()
                             val imageBytesLen = payloadLen - (2 + 2 + 8)
 
@@ -183,9 +187,11 @@ class StreamClient(
             while (isActive && isConnected.get()) {
                 delay(1500)
                 try {
-                    val out = outputStream
-                    if (out != null) {
-                        Protocol.writePing(out, System.currentTimeMillis())
+                    synchronized(writeLock) {
+                        val out = outputStream
+                        if (out != null) {
+                            Protocol.writePing(out, System.currentTimeMillis())
+                        }
                     }
                 } catch (_: Exception) {}
             }
@@ -216,8 +222,10 @@ class StreamClient(
         if (!isConnected.get()) return
         scope.launch(Dispatchers.IO) {
             try {
-                val out = outputStream ?: return@launch
-                Protocol.writeTouch(out, action, xRatio, yRatio)
+                synchronized(writeLock) {
+                    val out = outputStream ?: return@synchronized
+                    Protocol.writeTouch(out, action, xRatio, yRatio)
+                }
             } catch (_: Exception) {}
         }
     }
@@ -226,8 +234,10 @@ class StreamClient(
         if (!isConnected.get()) return
         scope.launch(Dispatchers.IO) {
             try {
-                val out = outputStream ?: return@launch
-                Protocol.writeGlobalAction(out, actionCode)
+                synchronized(writeLock) {
+                    val out = outputStream ?: return@synchronized
+                    Protocol.writeGlobalAction(out, actionCode)
+                }
             } catch (_: Exception) {}
         }
     }

@@ -94,6 +94,13 @@ Instala el archivo `catmirror.apk` en los dos teléfonos.
 3. **Vía Cable USB / Manual:** En la pestaña *Cable USB / Manual*, introduce la IP del emisor (o `127.0.0.1` si usas ADB) junto con el PIN y pulsa **"Conectar Ahora"**.
 4. ¡Listo! Verás la pantalla en tiempo real y podrás tocarla para interactuar con sus aplicaciones.
 
+> [!NOTE]
+> ### ℹ️ ¿El Receptor necesita permisos de Accesibilidad o Grabación de Pantalla?
+> **NO.** El teléfono receptor actúa exclusivamente como pantalla visualizadora y mando táctil.
+> * **NO** requiere activar el Servicio de Accesibilidad (por eso en su diagnóstico aparece *Accesibilidad: Inactiva*, lo cual es 100% normal y correcto).
+> * **NO** requiere aceptar permisos de grabación de pantalla (*MediaProjection*).
+> * Solo el **Dispositivo Emisor** necesita ambos permisos, ya que es quien captura su propia pantalla y quien inyecta los toques en su sistema operativo.
+
 ---
 
 ## 🌐 Control Remoto desde la PC (Navegador & Extensión Chrome)
